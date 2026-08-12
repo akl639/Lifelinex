@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Emergency Profile — LifelineX</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <style>
+        body {
+            margin: 0;
+            background: #f6f8fb;
+            font-family: Arial, sans-serif;
+        }
+
+        .profile-page {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .profile-card {
+            background: white;
+            padding: 35px;
+            border-radius: 20px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.07);
+        }
+
+        .profile-header h1 {
+            margin-bottom: 8px;
+        }
+
+        .profile-header p {
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .notice {
+            background: #fff8e6;
+            border: 1px solid #f0d58a;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            color: #6c5200;
+            line-height: 1.5;
+        }
+
+        .error {
+            background: #fff0f0;
+            border: 1px solid #ffcaca;
+            color: #b42318;
+            padding: 12px;
+            border-radius: 9px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 22px;
+        }
+
+        .form-group > label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .form-group select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px;
+            border: 1px solid #d9dce3;
+            border-radius: 9px;
+            font-size: 16px;
+            background: white;
+        }
+
+        .option-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .option {
+            border: 1px solid #d9dce3;
+            border-radius: 10px;
+            padding: 12px 16px;
+            cursor: pointer;
+            background: white;
+        }
+
+        .option input {
+            margin-right: 8px;
+        }
+
+        .save-btn {
+            width: 100%;
+            border: none;
+            background: #d62828;
+            color: white;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .location-btn {
+            width: 100%;
+            border: none;
+            background: #1677ff;
+            color: white;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .location-status {
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            text-decoration: none;
+            color: #333;
+        }
+
+        @media (max-width: 700px) {
+            .profile-page {
+                margin: 20px auto;
+                padding: 12px;
+            }
+
+            .profile-card {
+                padding: 24px;
+            }
+        }
+    </style>
+
+</head>
+
+<body>
+
+<div class="profile-page">
+
+    <div class="profile-card">
+
+        <div class="profile-header">
+
+            <h1>
+                🩸 Emergency Profile
+            </h1>
+
+            <p>
+                Configure the information you voluntarily want
+                to use for LifelineX emergency coordination.
+            </p>
+
+        </div>
+
+
+        <div class="notice">
+
+            Blood group and medical information are sensitive
+            information. In the real system, this information
+            must be protected and verified by qualified medical
+            personnel where necessary.
+
+        </div>
+
+
+        {% if error %}
+
+            <div class="error">
+                {{ error }}
+            </div>
+
+        {% endif %}
+
+
+        <form
+            method="POST"
+            action="/profile"
+        >
+
+            <!-- BLOOD GROUP -->
+
+            <div class="form-group">
+
+                <label for="blood_group">
+                    🩸 Blood Group
+                </label>
+
+                <select
+                    name="blood_group"
+                    id="blood_group"
+                    required
+                >
+
+                    <option
+                        value=""
+                        disabled
+                        {% if not profile %}selected{% endif %}
+                    >
+                        Select blood group
+                    </option>
+
+                    <option
+                        value="A+"
+                        {% if profile and profile["blood_group"] == "A+" %}selected{% endif %}
+                    >
+                        A+
+                    </option>
+
+                    <option
+                        value="A-"
+                        {% if profile and profile["blood_group"] == "A-" %}selected{% endif %}
+                    >
+                        A-
+                    </option>
+
+                    <option
+                        value="B+"
+                        {% if profile and profile["blood_group"] == "B+" %}selected{% endif %}
+                    >
+                        B+
+                    </option>
+
+                    <option
+                        value="B-"
+                        {% if profile and profile["blood_group"] == "B-" %}selected{% endif %}
+                    >
+                        B-
+                    </option>
+
+                    <option
+                        value="AB+"
+                        {% if profile and profile["blood_group"] == "AB+" %}selected{% endif %}
+                    >
+                        AB+
+                    </option>
+
+                    <option
+                        value="AB-"
+                        {% if profile and profile["blood_group"] == "AB-" %}selected{% endif %}
+                    >
+                        AB-
+                    </option>
+
+                    <option
+                        value="O+"
+                        {% if profile and profile["blood_group"] == "O+" %}selected{% endif %}
+                    >
+                        O+
+                    </option>
+
+                    <option
+                        value="O-"
+                        {% if profile and profile["blood_group"] == "O-" %}selected{% endif %}
+                    >
+                        O-
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- EMERGENCY ALERTS -->
+
+            <div class="form-group">
+
+                <label>
+                    🔔 Emergency Alerts
+                </label>
+
+                <div class="option-group">
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="emergency_alerts"
+                            value="1"
+                            required
+                            {% if profile and profile["emergency_alerts"] == 1 %}checked{% endif %}
+                        >
+
+                        Enable
+
+                    </label>
+
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="emergency_alerts"
+                            value="0"
+                            required
+                            {% if profile and profile["emergency_alerts"] == 0 %}checked{% endif %}
+                        >
+
+                        Disable
+
+                    </label>
+
+                </div>
+
+            </div>
+
+
+            <!-- LOCATION SHARING -->
+
+            <div class="form-group">
+
+                <label>
+                    📍 Emergency Location Sharing
+                </label>
+
+                <div class="option-group">
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="location_sharing"
+                            value="1"
+                            required
+                            {% if profile and profile["location_sharing"] == 1 %}checked{% endif %}
+                        >
+
+                        Enable
+
+                    </label>
+
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="location_sharing"
+                            value="0"
+                            required
+                            {% if profile and profile["location_sharing"] == 0 %}checked{% endif %}
+                        >
+
+                        Disable
+
+                    </label>
+
+                </div>
+
+            </div>
+
+
+            <!-- LOCATION UPDATE -->
+
+            <div class="form-group">
+
+                <label>
+                    📍 Current Location
+                </label>
+
+                <p
+                    id="location-status"
+                    class="location-status"
+                >
+                    {% if profile and profile["latitude"] is not none %}
+                        ✅ Location has been saved.
+                    {% else %}
+                        Location has not been updated yet.
+                    {% endif %}
+                </p>
+
+                <button
+                    type="button"
+                    id="location-btn"
+                    class="location-btn"
+                >
+                    📍 Update My Location
+                </button>
+
+            </div>
+
+
+            <!-- AVAILABILITY -->
+
+            <div class="form-group">
+
+                <label>
+                    🟢 Emergency Availability
+                </label>
+
+                <div class="option-group">
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="availability"
+                            value="1"
+                            required
+                            {% if profile and profile["availability"] == 1 %}checked{% endif %}
+                        >
+
+                        Available
+
+                    </label>
+
+
+                    <label class="option">
+
+                        <input
+                            type="radio"
+                            name="availability"
+                            value="0"
+                            required
+                            {% if profile and profile["availability"] == 0 %}checked{% endif %}
+                        >
+
+                        Not Available
+
+                    </label>
+
+                </div>
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="save-btn"
+            >
+                Save Emergency Profile
+            </button>
+
+        </form>
+
+
+        <a
+            href="/dashboard"
+            class="back-link"
+        >
+            ← Back to Dashboard
+        </a>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    const locationButton =
+        document.getElementById("location-btn");
+
+    const locationStatus =
+        document.getElementById("location-status");
+
+
+    locationButton.addEventListener(
+        "click",
+        function () {
+
+            if (!navigator.geolocation) {
+
+                locationStatus.textContent =
+                    "❌ Geolocation is not supported by this browser.";
+
+                return;
+            }
+
+
+            locationButton.disabled = true;
+
+            locationButton.textContent =
+                "📍 Getting location...";
+
+            locationStatus.textContent =
+                "Please allow location access if your browser asks.";
+
+
+            navigator.geolocation.getCurrentPosition(
+
+                async function (position) {
+
+                    const latitude =
+                        position.coords.latitude;
+
+                    const longitude =
+                        position.coords.longitude;
+
+
+                    try {
+
+                        const response =
+                            await fetch(
+                                "/api/location",
+                                {
+                                    method: "POST",
+
+                                    headers: {
+                                        "Content-Type":
+                                            "application/json"
+                                    },
+
+                                    body: JSON.stringify({
+                                        latitude: latitude,
+                                        longitude: longitude
+                                    })
+                                }
+                            );
+
+
+                        const result =
+                            await response.json();
+
+
+                        if (result.success) {
+
+                            locationStatus.textContent =
+                                "✅ Location updated successfully.";
+
+                        } else {
+
+                            locationStatus.textContent =
+                                "❌ " + result.message;
+                        }
+
+                    } catch (error) {
+
+                        console.error(error);
+
+                        locationStatus.textContent =
+                            "❌ Could not connect to LifelineX.";
+
+                    }
+
+
+                    locationButton.disabled = false;
+
+                    locationButton.textContent =
+                        "📍 Update My Location";
+
+                },
+
+
+                function (error) {
+
+                    console.error(
+                        "Geolocation error:",
+                        error
+                    );
+
+
+                    if (error.code === 1) {
+
+                        locationStatus.textContent =
+                            "❌ Location permission was denied.";
+
+                    } else if (error.code === 2) {
+
+                        locationStatus.textContent =
+                            "❌ Your device could not determine your location.";
+
+                    } else if (error.code === 3) {
+
+                        locationStatus.textContent =
+                            "❌ Location request timed out.";
+
+                    } else {
+
+                        locationStatus.textContent =
+                            "❌ Unknown location error.";
+                    }
+
+
+                    locationButton.disabled = false;
+
+                    locationButton.textContent =
+                        "📍 Update My Location";
+
+                },
+
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+
+        }
+    );
+
+</script>
+
+</body>
+</html>

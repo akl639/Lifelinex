@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Create Emergency Request — LifelineX</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <style>
+        body {
+            margin: 0;
+            background: #f6f8fb;
+            font-family: Arial, sans-serif;
+        }
+
+        .emergency-page {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .emergency-card {
+            background: white;
+            padding: 35px;
+            border-radius: 20px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.07);
+        }
+
+        .header h1 {
+            margin-bottom: 8px;
+            color: #111827;
+        }
+
+        .header p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .warning {
+            background: #fff0f0;
+            border: 1px solid #ffcaca;
+            color: #8b1e1e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .error {
+            background: #fff0f0;
+            border: 1px solid #ffcaca;
+            color: #b42318;
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 22px;
+        }
+
+        .form-group > label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #111827;
+        }
+
+        select,
+        input,
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px;
+            border: 1px solid #d9dce3;
+            border-radius: 9px;
+            font-size: 16px;
+            background: white;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .urgency-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .urgency-option {
+            border: 1px solid #d9dce3;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .urgency-option input {
+            width: auto;
+            margin-right: 7px;
+        }
+
+        .critical {
+            border-color: #ffb3b3;
+            background: #fff3f3;
+        }
+
+        .high {
+            border-color: #ffd19a;
+            background: #fff8ed;
+        }
+
+        .normal {
+            border-color: #c8d8ff;
+            background: #f2f6ff;
+        }
+
+        .location-box {
+            background: #f4f7fb;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+
+        .location-status {
+            color: #666;
+            margin-bottom: 12px;
+        }
+
+        .location-btn {
+            border: none;
+            background: #1677ff;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 9px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .submit-btn {
+            width: 100%;
+            border: none;
+            background: #d62828;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            text-decoration: none;
+            color: #333;
+        }
+
+        .coordinates {
+            font-family: monospace;
+            font-size: 13px;
+            color: #555;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 700px) {
+
+            .emergency-page {
+                margin: 20px auto;
+                padding: 12px;
+            }
+
+            .emergency-card {
+                padding: 24px;
+            }
+
+            .urgency-group {
+                grid-template-columns: 1fr;
+            }
+
+        }
+    </style>
+
+</head>
+
+<body>
+
+<div class="emergency-page">
+
+    <div class="emergency-card">
+
+        <div class="header">
+
+            <h1>
+                🚨 Create Emergency Request
+            </h1>
+
+            <p>
+                Request urgent blood or permitted medical
+                assistance through the LifelineX campus
+                response network.
+            </p>
+
+        </div>
+
+
+        <div class="warning">
+
+            LifelineX is a hackathon prototype.
+            It does not diagnose, determine medical eligibility,
+            verify transfusion compatibility, or authorize
+            medication distribution.
+
+        </div>
+
+
+        {% if error %}
+
+            <div class="error">
+                {{ error }}
+            </div>
+
+        {% endif %}
+
+
+        <form
+            id="emergency-form"
+            method="POST"
+            action="/emergency"
+        >
+
+            <!-- EMERGENCY TYPE -->
+
+            <div class="form-group">
+
+                <label for="emergency_type">
+                    Emergency Type
+                </label>
+
+                <select
+                    id="emergency_type"
+                    name="emergency_type"
+                    required
+                >
+
+                    <option value="">
+                        Select emergency type
+                    </option>
+
+                    <option value="blood">
+                        🩸 Blood Requirement
+                    </option>
+
+                    <option value="medical">
+                        💊 Medical Assistance / Resource
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- BLOOD -->
+
+            <div
+                id="blood-section"
+                style="display:none;"
+            >
+
+                <div class="form-group">
+
+                    <label for="required_blood_group">
+                        Required Blood Group
+                    </label>
+
+                    <select
+                        id="required_blood_group"
+                        name="required_blood_group"
+                    >
+
+                        <option value="">
+                            Select blood group
+                        </option>
+
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+
+                    </select>
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label for="units">
+                        Units Required
+                    </label>
+
+                    <input
+                        type="number"
+                        id="units"
+                        name="units"
+                        min="1"
+                        max="20"
+                        placeholder="e.g. 2"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <!-- MEDICAL -->
+
+            <div
+                id="medical-section"
+                style="display:none;"
+            >
+
+                <div class="form-group">
+
+                    <label for="resource_name">
+                        Medical Resource / Medicine
+                    </label>
+
+                    <input
+                        type="text"
+                        id="resource_name"
+                        name="resource_name"
+                        placeholder="Enter the required resource"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label for="resource_quantity">
+                        Quantity Required
+                    </label>
+
+                    <input
+                        type="number"
+                        id="resource_quantity"
+                        name="resource_quantity"
+                        min="1"
+                        max="100"
+                        placeholder="e.g. 5"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <!-- URGENCY -->
+
+            <div class="form-group">
+
+                <label>
+                    Urgency
+                </label>
+
+                <div class="urgency-group">
+
+                    <label class="urgency-option critical">
+
+                        <input
+                            type="radio"
+                            name="urgency"
+                            value="critical"
+                            required
+                        >
+
+                        🔴 Critical
+
+                    </label>
+
+
+                    <label class="urgency-option high">
+
+                        <input
+                            type="radio"
+                            name="urgency"
+                            value="high"
+                        >
+
+                        🟠 High
+
+                    </label>
+
+
+                    <label class="urgency-option normal">
+
+                        <input
+                            type="radio"
+                            name="urgency"
+                            value="normal"
+                        >
+
+                        🟡 Normal
+
+                    </label>
+
+                </div>
+
+            </div>
+
+
+            <!-- DESCRIPTION -->
+
+            <div class="form-group">
+
+                <label for="description">
+                    Additional Details
+                </label>
+
+                <textarea
+                    id="description"
+                    name="description"
+                    placeholder="Describe the emergency briefly..."
+                    required
+                ></textarea>
+
+            </div>
+
+
+            <!-- LOCATION -->
+
+            <div class="form-group">
+
+                <label>
+                    📍 Emergency Location
+                </label>
+
+                <div class="location-box">
+
+                    <div
+                        id="emergency-location-status"
+                        class="location-status"
+                    >
+                        Emergency location has not been selected.
+                    </div>
+
+                    <div
+                        id="emergency-coordinates"
+                        class="coordinates"
+                    ></div>
+
+                    <button
+                        type="button"
+                        id="emergency-location-btn"
+                        class="location-btn"
+                    >
+                        📍 Use My Current Location
+                    </button>
+
+                </div>
+
+                <input
+                    type="hidden"
+                    id="latitude"
+                    name="latitude"
+                >
+
+                <input
+                    type="hidden"
+                    id="longitude"
+                    name="longitude"
+                >
+
+            </div>
+
+
+            <!-- SUBMIT -->
+
+            <button
+                type="submit"
+                class="submit-btn"
+            >
+                🚨 Create Emergency Request
+            </button>
+
+        </form>
+
+
+        <a
+            href="/dashboard"
+            class="back-link"
+        >
+            ← Back to Dashboard
+        </a>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    const emergencyType =
+        document.getElementById("emergency_type");
+
+    const bloodSection =
+        document.getElementById("blood-section");
+
+    const medicalSection =
+        document.getElementById("medical-section");
+
+    const locationButton =
+        document.getElementById("emergency-location-btn");
+
+    const locationStatus =
+        document.getElementById("emergency-location-status");
+
+    const coordinatesText =
+        document.getElementById("emergency-coordinates");
+
+    const latitudeInput =
+        document.getElementById("latitude");
+
+    const longitudeInput =
+        document.getElementById("longitude");
+
+
+    // -----------------------------------------------------
+    // SHOW BLOOD OR MEDICAL FIELDS
+    // -----------------------------------------------------
+
+    emergencyType.addEventListener(
+        "change",
+        function () {
+
+            bloodSection.style.display = "none";
+            medicalSection.style.display = "none";
+
+            if (this.value === "blood") {
+
+                bloodSection.style.display = "block";
+
+            } else if (this.value === "medical") {
+
+                medicalSection.style.display = "block";
+            }
+        }
+    );
+
+
+    // -----------------------------------------------------
+    // GET EMERGENCY LOCATION
+    // -----------------------------------------------------
+
+    locationButton.addEventListener(
+        "click",
+        function () {
+
+            if (!navigator.geolocation) {
+
+                locationStatus.textContent =
+                    "❌ Geolocation is not supported by this browser.";
+
+                return;
+            }
+
+
+            locationButton.disabled = true;
+
+            locationButton.textContent =
+                "📍 Getting location...";
+
+            locationStatus.textContent =
+                "Please allow location access if your browser asks.";
+
+
+            navigator.geolocation.getCurrentPosition(
+
+                function (position) {
+
+                    const latitude =
+                        position.coords.latitude;
+
+                    const longitude =
+                        position.coords.longitude;
+
+
+                    latitudeInput.value =
+                        latitude;
+
+                    longitudeInput.value =
+                        longitude;
+
+
+                    locationStatus.textContent =
+                        "✅ Emergency location captured.";
+
+                    coordinatesText.textContent =
+                        `Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+
+                    locationButton.disabled = false;
+
+                    locationButton.textContent =
+                        "📍 Location Captured";
+
+                },
+
+
+                function (error) {
+
+                    console.error(
+                        "Emergency location error:",
+                        error
+                    );
+
+
+                    if (error.code === 1) {
+
+                        locationStatus.textContent =
+                            "❌ Location permission was denied.";
+
+                    } else if (error.code === 2) {
+
+                        locationStatus.textContent =
+                            "❌ Your device could not determine your location.";
+
+                    } else if (error.code === 3) {
+
+                        locationStatus.textContent =
+                            "❌ Location request timed out.";
+
+                    } else {
+
+                        locationStatus.textContent =
+                            "❌ Could not determine location.";
+                    }
+
+
+                    locationButton.disabled = false;
+
+                    locationButton.textContent =
+                        "📍 Use My Current Location";
+                },
+
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+
+        }
+    );
+
+</script>
+
+</body>
+</html>

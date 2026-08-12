@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LifelineX — Campus Emergency Blood &amp; Medical Assistance Network</title>
+  <meta name="description"
+    content="LifelineX coordinates opt-in campus responders for blood and medical emergencies in real time." />
+
+  <!-- Google Fonts: Space Grotesk (headlines), Inter (body), JetBrains Mono (data/status) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+</head>
+
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav">
+    <div class="nav__inner">
+      <a href="/" class="nav__brand">
+        <span class="nav__pulse-dot" aria-hidden="true"></span>
+        LifelineX
+      </a>
+
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#safety">Safety</a>
+      </nav>
+
+      <div class="nav__actions">
+        <a href="{{ url_for('login') }}" class="btn btn--ghost">Sign in</a>
+
+        <a href="{{ url_for('register') }}" class="btn btn--primary">
+          Get started
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="hero__content">
+        <p class="eyebrow">Campus emergency response network · Prototype</p>
+        <h1 class="hero__headline">
+          When minutes matter,<br>
+          your campus <span class="hero__headline-accent">responds.</span>
+        </h1>
+        <p class="hero__sub">
+          LifelineX connects students who need urgent blood or medical assistance with
+          nearby, opted-in responders on campus — matched by need, distance, and
+          availability, and alerted in real time.
+        </p>
+        <div class="hero__actions">
+          <a href="{{ url_for('register') }}" class="btn btn--primary btn--lg">Create an account</a>
+          <a href="#how-it-works" class="btn btn--outline btn--lg">See how it works</a>
+        </div>
+
+        <div class="hero__stats" aria-label="Prototype demo statistics">
+          <div class="stat">
+            <span class="stat__value">500m</span>
+            <span class="stat__label">first-stage search radius</span>
+          </div>
+          <div class="stat">
+            <span class="stat__value">Opt-in</span>
+            <span class="stat__label">alerts &amp; location, always</span>
+          </div>
+          <div class="stat">
+            <span class="stat__value">Real-time</span>
+            <span class="stat__label">dashboard updates</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signature visual: an EKG pulse line that resolves into a
+           network of responder nodes. Ties the "emergency" (heartbeat)
+           and "network" (connected responders) concepts together. -->
+      <div class="hero__visual" aria-hidden="true">
+        <svg viewBox="0 0 520 360" class="pulse-graphic" xmlns="http://www.w3.org/2000/svg">
+          <!-- faint campus grid backdrop -->
+          <g class="pulse-graphic__grid">
+            <line x1="0" y1="60" x2="520" y2="60" />
+            <line x1="0" y1="140" x2="520" y2="140" />
+            <line x1="0" y1="220" x2="520" y2="220" />
+            <line x1="0" y1="300" x2="520" y2="300" />
+          </g>
+
+          <!-- the EKG line that draws itself, then loops -->
+          <path class="pulse-graphic__line" d="M0,180 L90,180 L110,180 L125,120 L145,250 L165,60 L185,180 L230,180
+               L250,150 L270,180 L340,180 L360,110 L380,220 L400,180 L520,180" fill="none" />
+
+          <!-- network nodes representing opted-in responders -->
+          <circle class="pulse-graphic__node" cx="90" cy="180" r="5" style="--d:0s" />
+          <circle class="pulse-graphic__node" cx="230" cy="180" r="5" style="--d:0.15s" />
+          <circle class="pulse-graphic__node" cx="340" cy="180" r="5" style="--d:0.3s" />
+          <circle class="pulse-graphic__node pulse-graphic__node--active" cx="450" cy="180" r="7" style="--d:0.45s" />
+
+          <g class="pulse-graphic__links">
+            <line x1="90" y1="180" x2="230" y2="180" />
+            <line x1="230" y1="180" x2="340" y2="180" />
+            <line x1="340" y1="180" x2="450" y2="180" />
+          </g>
+        </svg>
+        <span class="hero__visual-caption">Simulated responder network — demo data</span>
+      </div>
+    </section>
+
+    <!-- ============ PROBLEM ============ -->
+    <section class="problem">
+      <div class="problem__inner">
+        <h2>Campus emergencies move faster than campus coordination.</h2>
+        <p>
+          When a student urgently needs blood or medical assistance, the people who
+          could help — a compatible donor two buildings away, a coordinator with
+          access to campus medical resources — often aren't found in time. LifelineX
+          exists to close that gap, using only information students have explicitly
+          chosen to share.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section id="how-it-works" class="how">
+      <p class="section-eyebrow">The response sequence</p>
+      <h2 class="section-title">From request to resolution</h2>
+
+      <ol class="how__steps">
+        <li class="how__step">
+          <span class="how__index">01</span>
+          <h3>Request is created</h3>
+          <p>A student or campus medical coordinator opens LifelineX and submits an emergency request — blood or a
+            medical resource — with urgency and location.</p>
+        </li>
+        <li class="how__step">
+          <span class="how__index">02</span>
+          <h3>Responders are matched</h3>
+          <p>The system searches opted-in responders nearby first, expanding the radius in stages — 500m, 1km, 3km —
+            only if needed.</p>
+        </li>
+        <li class="how__step">
+          <span class="how__index">03</span>
+          <h3>Alerts go out</h3>
+          <p>Matched responders receive a high-priority, clearly labeled emergency alert with distance, urgency, and
+            what's needed — nothing more.</p>
+        </li>
+        <li class="how__step">
+          <span class="how__index">04</span>
+          <h3>Response is confirmed</h3>
+          <p>A responder accepts, the coordinator dashboard updates in real time, and further alerts stop once enough
+            responders are found.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section id="features" class="features">
+      <p class="section-eyebrow">Built on consent</p>
+      <h2 class="section-title">Every signal is opt-in, every view is minimal</h2>
+
+      <div class="features__grid">
+        <article class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">◎</div>
+          <h3>Opt-in, always</h3>
+          <p>Location sharing and emergency alerts are off by default. Students choose to become responders, and can
+            turn it off any time.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">▤</div>
+          <h3>Minimum necessary detail</h3>
+          <p>Responders see approximate distance and urgency — never a student's exact location or private medical
+            history.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">◇</div>
+          <h3>Deterministic matching</h3>
+          <p>Responders are ranked by resource match, distance, and availability using clear rules — not an AI making
+            medical decisions.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-card__icon" aria-hidden="true">▣</div>
+          <h3>Coordinator oversight</h3>
+          <p>An admin dashboard gives campus medical coordinators full visibility into active emergencies and responder
+            status.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ SAFETY BAND ============ -->
+    <section id="safety" class="safety">
+      <div class="safety__inner">
+        <p class="safety__label">Prototype disclosure</p>
+        <h2>LifelineX is a hackathon prototype, not a medical system.</h2>
+        <p>
+          It does not diagnose, verify blood compatibility, or authorize donations or
+          medication distribution. All blood group and medical information is
+          self-reported and must be verified by qualified medical staff before any
+          real-world donation, transfusion, or medicine distribution. LifelineX only
+          coordinates communication between opted-in students and authorized campus
+          medical resources.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="cta">
+      <h2>See the response network in action.</h2>
+      <p>Load demo data and walk through a full emergency — from request to resolution.</p>
+      <a href="{{ url_for('register') }}" class="btn btn--primary btn--lg">
+        Create an account
+      </a>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <span>LifelineX — Campus Emergency Blood &amp; Medical Assistance Network</span>
+      <span class="footer__meta">Hackathon prototype · Not for real emergency use</span>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>
