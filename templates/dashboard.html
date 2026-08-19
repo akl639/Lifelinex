@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Dashboard — LifelineX</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    <style>
+        body {
+            margin: 0;
+            background: #f6f8fb;
+            font-family: Arial, sans-serif;
+        }
+
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .topbar h1 {
+            margin: 0;
+            color: #111827;
+        }
+
+        .logout {
+            text-decoration: none;
+            padding: 10px 18px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            color: #333;
+            background: white;
+        }
+
+        .welcome {
+            background: white;
+            border-radius: 18px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.06);
+        }
+
+        .welcome h2 {
+            margin-top: 0;
+            color: #111827;
+        }
+
+        .welcome p {
+            color: #666;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 18px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.06);
+        }
+
+        .card h3 {
+            margin-top: 0;
+            color: #111827;
+        }
+
+        .status {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .green {
+            color: #16803c;
+        }
+
+        .gray {
+            color: #777;
+        }
+
+        .emergency-box {
+            background: #fff0f0;
+            border: 1px solid #ffcaca;
+            padding: 30px;
+            border-radius: 18px;
+            margin-bottom: 25px;
+        }
+
+        .emergency-box h2 {
+            margin-top: 0;
+        }
+
+        .emergency-box p {
+            color: #444;
+            line-height: 1.5;
+        }
+
+        .emergency-btn {
+            display: inline-block;
+            background: #d62828;
+            color: white;
+            text-decoration: none;
+            padding: 14px 22px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .action-card {
+            display: block;
+            background: white;
+            padding: 25px;
+            border-radius: 18px;
+            text-decoration: none;
+            color: inherit;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.06);
+        }
+
+        .action-card h3 {
+            margin-top: 0;
+        }
+
+        .action-card p {
+            color: #666;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 800px) {
+            .cards,
+            .actions {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard {
+                padding: 20px;
+            }
+        }
+    </style>
+
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <div class="topbar">
+
+        <h1>LifelineX</h1>
+
+        <a
+            href="/logout"
+            class="logout"
+        >
+            Logout
+        </a>
+
+    </div>
+
+
+    <div class="welcome">
+
+        <h2>
+            Welcome back, {{ user_name }} 👋
+        </h2>
+
+        <p>
+            Your campus emergency response dashboard.
+        </p>
+
+    </div>
+
+
+    <div class="cards">
+
+        <div class="card">
+
+            <h3>🩸 Blood Group</h3>
+
+            {% if profile %}
+
+                <p class="status">
+                    {{ profile["blood_group"] }}
+                </p>
+
+            {% else %}
+
+                <p class="gray">
+                    Not configured yet
+                </p>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="card">
+
+            <h3>🔔 Emergency Alerts</h3>
+
+            {% if profile and profile["emergency_alerts"] %}
+
+                <p class="status green">
+                    Enabled
+                </p>
+
+            {% else %}
+
+                <p class="status gray">
+                    Disabled
+                </p>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="card">
+
+            <h3>📍 Location Sharing</h3>
+
+            {% if profile and profile["location_sharing"] %}
+
+                <p class="status green">
+                    Enabled
+                </p>
+
+                {% if profile["latitude"] is not none
+                    and profile["longitude"] is not none %}
+
+                    <p class="status green">
+                        Location available
+                    </p>
+
+                {% else %}
+
+                    <p class="gray">
+                        Location not updated yet
+                    </p>
+
+                {% endif %}
+
+            {% else %}
+
+                <p class="status gray">
+                    Disabled
+                </p>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+
+    <div
+        class="card"
+        style="margin-bottom: 25px;"
+    >
+
+        <h3>
+            🟢 Emergency Availability
+        </h3>
+
+        {% if profile and profile["availability"] %}
+
+            <p class="status green">
+                Available to help
+            </p>
+
+        {% else %}
+
+            <p class="status gray">
+                Not available
+            </p>
+
+        {% endif %}
+
+    </div>
+
+
+    <div class="emergency-box">
+
+        <h2>
+            🚨 Need Emergency Assistance?
+        </h2>
+
+        <p>
+            Create an emergency request for blood or permitted
+            medical assistance.
+        </p>
+
+        <a
+            href="/emergency"
+            class="emergency-btn"
+        >
+            🚨 Create Emergency Request
+        </a>
+
+    </div>
+
+
+    <div class="actions">
+
+        <a
+            href="/profile"
+            class="action-card"
+        >
+
+            <h3>
+                👤 Emergency Profile
+            </h3>
+
+            <p>
+                View or update your blood group,
+                emergency alerts, location sharing
+                and availability.
+            </p>
+
+        </a>
+
+
+        <a
+            href="#"
+            class="action-card"
+            onclick="alert('Emergency History will be added in a later phase.'); return false;"
+        >
+
+            <h3>
+                📋 Emergency History
+            </h3>
+
+            <p>
+                View your previous emergency requests
+                and responses.
+            </p>
+
+        </a>
+
+    </div>
+
+</div>
+
+</body>
+</html>

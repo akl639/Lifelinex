@@ -4,21 +4,18 @@ __v0_devtools.tsx
 __v0_jsx-dev-runtime.ts
 .snowflake/
 .v0-trash/
-
-# Vercel
 .vercel/
 
-# Environment variables — NEVER commit secrets
+# Environment variables
 .env
 .env.local
 .env*.local
-.env.*.local
 
 # Dependencies
 node_modules/
-
-# Next.js
 .next/
+
+# Build output
 out/
 
 # OS files

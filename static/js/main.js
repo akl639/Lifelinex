@@ -1,0 +1,1 @@
+console.log("LifelineX application loaded successfully.");
