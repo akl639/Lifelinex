@@ -70,12 +70,6 @@ export default function NewEmergencyPage() {
       try {
         const user = await authService.me()
         setCurrentUser(user)
-        if (user) {
-          setRequesterName((prev) => prev || user.name || "")
-          setRequesterPhone((prev) => prev || user.phone || "")
-          setRequesterEmail((prev) => prev || user.email || "")
-          setRequesterAddress((prev) => prev || user.address || "")
-        }
       } catch {
         setCurrentUser(null)
       }
@@ -923,14 +917,14 @@ export default function NewEmergencyPage() {
                         <div
                           key={message.id}
                           className={`flex ${message.senderRole === "requester"
-                              ? "justify-end"
-                              : "justify-start"
+                            ? "justify-end"
+                            : "justify-start"
                             }`}
                         >
                           <div
                             className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.senderRole === "requester"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted"
                               }`}
                           >
                             <p className="text-xs font-semibold opacity-70">

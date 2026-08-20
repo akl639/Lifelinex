@@ -16,11 +16,11 @@ export function SiteFooter() {
             will only ever contact you when a matching request is live nearby.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button size="lg" render={<Link href="/register" />}>
+            <Button size="lg" render={<Link href="/register" />} nativeButton={false}>
               Register as a donor
               <ArrowRightIcon data-icon="inline-end" />
             </Button>
-            <Button size="lg" variant="outline" render={<Link href="/emergency/new" />}>
+            <Button size="lg" variant="outline" render={<Link href="/emergency/new" />} nativeButton={false}>
               Raise a request
             </Button>
           </div>
