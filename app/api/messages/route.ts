@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { getDatabase } from "@/lib/mongodb"
 
 export const runtime = "nodejs"
 
@@ -12,26 +11,6 @@ type Message = {
   text: string
   message?: string
   createdAt: number
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const MESSAGES_FILE = path.join(DATA_DIR, "messages.json")
-
-async function readMessages(): Promise<Message[]> {
-  try {
-    const text = await fs.readFile(MESSAGES_FILE, "utf8")
-    if (!text.trim()) return []
-    return JSON.parse(text)
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    await fs.writeFile(MESSAGES_FILE, "[]", "utf8")
-    return []
-  }
-}
-
-async function saveMessages(messages: Message[]) {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  await fs.writeFile(MESSAGES_FILE, JSON.stringify(messages, null, 2), "utf8")
 }
 
 function createMessageId() {
@@ -53,10 +32,20 @@ export async function GET(request: Request) {
       )
     }
 
-    const messages = await readMessages()
-    const filtered = messages.filter((m) => m.emergencyId === emergencyId)
+    const db = await getDatabase()
+    const messagesCollection = db.collection("messages")
 
-    return NextResponse.json({ messages: filtered })
+    const messages = await messagesCollection
+      .find({ emergencyId })
+      .sort({ createdAt: 1 })
+      .toArray()
+
+    const sanitized = messages.map((m: any) => {
+      const { _id, ...rest } = m
+      return rest
+    })
+
+    return NextResponse.json({ messages: sanitized })
   } catch (error) {
     console.error("GET MESSAGES ERROR:", error)
     return NextResponse.json({ messages: [] })
@@ -102,7 +91,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const messages = await readMessages()
+    const db = await getDatabase()
+    const messagesCollection = db.collection("messages")
+
     const newMessage: Message = {
       id: createMessageId(),
       emergencyId,
@@ -113,8 +104,10 @@ export async function POST(request: Request) {
       createdAt: Date.now(),
     }
 
-    messages.push(newMessage)
-    await saveMessages(messages)
+    await messagesCollection.insertOne({
+      ...newMessage,
+      createdAtDate: new Date(),
+    })
 
     return NextResponse.json({
       success: true,
@@ -144,9 +137,9 @@ export async function DELETE(request: Request) {
       )
     }
 
-    const messages = await readMessages()
-    const remaining = messages.filter((m) => m.emergencyId !== emergencyId)
-    await saveMessages(remaining)
+    const db = await getDatabase()
+    const messagesCollection = db.collection("messages")
+    await messagesCollection.deleteMany({ emergencyId })
 
     return NextResponse.json({ success: true })
   } catch (error) {

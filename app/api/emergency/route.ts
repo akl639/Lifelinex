@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { getDatabase } from "@/lib/mongodb"
 import type { BloodGroup, User } from "@/lib/types"
 
 export const runtime = "nodejs"
@@ -52,56 +51,13 @@ export type Emergency = {
   donorLocationUpdatedAt?: number
 
   connectionStatus?:
-    | "none"
-    | "requested"
-    | "connected"
-    | "ended"
+  | "none"
+  | "requested"
+  | "connected"
+  | "ended"
 
   connectionEndedBy?: string
   connectionEndedAt?: number
-}
-
-type StoredAccount = {
-  user: User
-  password?: string
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const EMERGENCIES_FILE = path.join(DATA_DIR, "emergencies.json")
-const USERS_FILE = path.join(DATA_DIR, "users.json")
-
-async function readEmergencies(): Promise<Emergency[]> {
-  try {
-    const text = await fs.readFile(EMERGENCIES_FILE, "utf8")
-    if (!text.trim()) return []
-    return JSON.parse(text)
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    await fs.writeFile(EMERGENCIES_FILE, "[]", "utf8")
-    return []
-  }
-}
-
-async function saveEmergencies(data: Emergency[]) {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  await fs.writeFile(EMERGENCIES_FILE, JSON.stringify(data, null, 2), "utf8")
-}
-
-async function readUsers(): Promise<StoredAccount[]> {
-  try {
-    const text = await fs.readFile(USERS_FILE, "utf8")
-    if (!text.trim()) return []
-    return JSON.parse(text)
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    await fs.writeFile(USERS_FILE, "[]", "utf8")
-    return []
-  }
-}
-
-async function saveUsers(accounts: StoredAccount[]) {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  await fs.writeFile(USERS_FILE, JSON.stringify(accounts, null, 2), "utf8")
 }
 
 function createRequestId() {
@@ -121,13 +77,23 @@ export async function GET(request: Request) {
     const viewerId = searchParams.get("viewerId") || searchParams.get("userId") || ""
     const emergencyId = searchParams.get("id") || searchParams.get("emergencyId")
 
-    const emergencies = await readEmergencies()
+    const db = await getDatabase()
+    const emergenciesCollection = db.collection("emergencies")
 
     if (emergencyId) {
-      const found = emergencies.find((e) => e.id === emergencyId || e.emergencyId === emergencyId)
-      if (!found) {
+      const foundDoc = await emergenciesCollection.findOne({
+        $or: [
+          { id: emergencyId },
+          { emergencyId: emergencyId },
+          { requestId: emergencyId },
+        ],
+      })
+
+      if (!foundDoc) {
         return NextResponse.json({ error: "Emergency not found" }, { status: 404 })
       }
+
+      const { _id, ...found } = foundDoc as any
 
       // Check privacy for single emergency
       const isConnectedOrRequester =
@@ -151,7 +117,13 @@ export async function GET(request: Request) {
     }
 
     // List of emergencies with privacy protection for unconnected donors
-    const sanitized = emergencies.map((item) => {
+    const emergencyDocs = await emergenciesCollection
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray()
+
+    const sanitized = emergencyDocs.map((doc: any) => {
+      const { _id, ...item } = doc
       const isConnectedOrRequester =
         item.requesterId === viewerId ||
         item.acceptedBy === viewerId ||
@@ -181,7 +153,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const emergencies = await readEmergencies()
+    const db = await getDatabase()
+    const emergenciesCollection = db.collection("emergencies")
+    const usersCollection = db.collection("users")
 
     /*
      * 1. DONOR ACCEPTS EMERGENCY ("I CAN HELP")
@@ -191,9 +165,13 @@ export async function POST(request: Request) {
       body.action === "help" ||
       body.action === "respond"
     ) {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (!emergency) {
         return NextResponse.json(
@@ -202,28 +180,36 @@ export async function POST(request: Request) {
         )
       }
 
-      emergency.status = "fulfilled"
-      emergency.acceptedBy = body.donorId || body.userId || "DONOR"
-      emergency.donorId = body.donorId || body.userId || "DONOR"
-      emergency.donorName = body.donorName || "LifelineX Donor"
-      emergency.donorPhone = body.donorPhone || ""
-      emergency.donorEmail = body.donorEmail || ""
-      emergency.connectionStatus = "connected"
+      const updates: Record<string, any> = {
+        status: "fulfilled",
+        acceptedBy: body.donorId || body.userId || "DONOR",
+        donorId: body.donorId || body.userId || "DONOR",
+        donorName: body.donorName || "LifelineX Donor",
+        donorPhone: body.donorPhone || "",
+        donorEmail: body.donorEmail || "",
+        connectionStatus: "connected",
+      }
 
       if (
         typeof body.latitude === "number" &&
         typeof body.longitude === "number"
       ) {
-        emergency.donorLatitude = body.latitude
-        emergency.donorLongitude = body.longitude
-        emergency.donorLocationUpdatedAt = Date.now()
+        updates.donorLatitude = body.latitude
+        updates.donorLongitude = body.longitude
+        updates.donorLocationUpdatedAt = Date.now()
       }
 
-      await saveEmergencies(emergencies)
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
+
+      const { _id, ...rest } = emergency
+      const updatedEmergency = { ...rest, ...updates }
 
       return NextResponse.json({
         success: true,
-        emergency,
+        emergency: updatedEmergency,
       })
     }
 
@@ -231,9 +217,13 @@ export async function POST(request: Request) {
      * 2. PATIENT REQUESTS PHONE CALL
      */
     if (body.action === "contact-request") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (!emergency) {
         return NextResponse.json(
@@ -242,14 +232,20 @@ export async function POST(request: Request) {
         )
       }
 
-      emergency.contactRequested = true
-      emergency.contactRequestedAt = Date.now()
+      const updates = {
+        contactRequested: true,
+        contactRequestedAt: Date.now(),
+      }
 
-      await saveEmergencies(emergencies)
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
 
+      const { _id, ...rest } = emergency
       return NextResponse.json({
         success: true,
-        emergency,
+        emergency: { ...rest, ...updates },
       })
     }
 
@@ -257,9 +253,13 @@ export async function POST(request: Request) {
      * 3. DONOR ACCEPTS PHONE CALL
      */
     if (body.action === "contact-accept") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (!emergency) {
         return NextResponse.json(
@@ -268,14 +268,20 @@ export async function POST(request: Request) {
         )
       }
 
-      emergency.contactAccepted = true
-      emergency.contactAcceptedAt = Date.now()
+      const updates = {
+        contactAccepted: true,
+        contactAcceptedAt: Date.now(),
+      }
 
-      await saveEmergencies(emergencies)
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
 
+      const { _id, ...rest } = emergency
       return NextResponse.json({
         success: true,
-        emergency,
+        emergency: { ...rest, ...updates },
       })
     }
 
@@ -283,9 +289,13 @@ export async function POST(request: Request) {
      * 4. DONOR REJECTS PHONE CALL
      */
     if (body.action === "contact-reject") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (!emergency) {
         return NextResponse.json(
@@ -294,14 +304,20 @@ export async function POST(request: Request) {
         )
       }
 
-      emergency.contactRequested = false
-      emergency.contactAccepted = false
+      const updates = {
+        contactRequested: false,
+        contactAccepted: false,
+      }
 
-      await saveEmergencies(emergencies)
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
 
+      const { _id, ...rest } = emergency
       return NextResponse.json({
         success: true,
-        emergency,
+        emergency: { ...rest, ...updates },
       })
     }
 
@@ -309,9 +325,13 @@ export async function POST(request: Request) {
      * 5. DISCONNECT / END CONNECTION
      */
     if (body.action === "disconnect") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (!emergency) {
         return NextResponse.json(
@@ -320,15 +340,21 @@ export async function POST(request: Request) {
         )
       }
 
-      emergency.connectionStatus = "ended"
-      emergency.connectionEndedBy = body.userId || "USER"
-      emergency.connectionEndedAt = Date.now()
+      const updates = {
+        connectionStatus: "ended" as const,
+        connectionEndedBy: body.userId || "USER",
+        connectionEndedAt: Date.now(),
+      }
 
-      await saveEmergencies(emergencies)
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
 
+      const { _id, ...rest } = emergency
       return NextResponse.json({
         success: true,
-        emergency,
+        emergency: { ...rest, ...updates },
       })
     }
 
@@ -336,38 +362,74 @@ export async function POST(request: Request) {
      * 6. UPDATE DONOR LIVE LOCATION
      */
     if (body.action === "location-update") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (emergency && typeof body.latitude === "number" && typeof body.longitude === "number") {
-        emergency.donorLatitude = body.latitude
-        emergency.donorLongitude = body.longitude
-        emergency.donorLocationUpdatedAt = Date.now()
-        await saveEmergencies(emergencies)
+        const updates = {
+          donorLatitude: body.latitude,
+          donorLongitude: body.longitude,
+          donorLocationUpdatedAt: Date.now(),
+        }
+
+        await emergenciesCollection.updateOne(
+          { _id: emergency._id },
+          { $set: updates },
+        )
+
+        const { _id, ...rest } = emergency
+        return NextResponse.json({ success: true, emergency: { ...rest, ...updates } })
       }
 
-      return NextResponse.json({ success: true, emergency })
+      if (emergency) {
+        const { _id, ...rest } = emergency
+        return NextResponse.json({ success: true, emergency: rest })
+      }
+
+      return NextResponse.json({ success: true, emergency: null })
     }
 
     /*
      * 7. UPDATE REQUESTER LIVE LOCATION
      */
     if (body.action === "requester-location-update") {
-      const emergency = emergencies.find(
-        (item) => item.id === body.emergencyId || item.emergencyId === body.emergencyId,
-      )
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
 
       if (emergency && typeof body.latitude === "number" && typeof body.longitude === "number") {
-        emergency.requesterLatitude = body.latitude
-        emergency.requesterLongitude = body.longitude
-        emergency.latitude = body.latitude
-        emergency.longitude = body.longitude
-        emergency.requesterLocationUpdatedAt = Date.now()
-        await saveEmergencies(emergencies)
+        const updates = {
+          requesterLatitude: body.latitude,
+          requesterLongitude: body.longitude,
+          latitude: body.latitude,
+          longitude: body.longitude,
+          requesterLocationUpdatedAt: Date.now(),
+        }
+
+        await emergenciesCollection.updateOne(
+          { _id: emergency._id },
+          { $set: updates },
+        )
+
+        const { _id, ...rest } = emergency
+        return NextResponse.json({ success: true, emergency: { ...rest, ...updates } })
       }
 
-      return NextResponse.json({ success: true, emergency })
+      if (emergency) {
+        const { _id, ...rest } = emergency
+        return NextResponse.json({ success: true, emergency: rest })
+      }
+
+      return NextResponse.json({ success: true, emergency: null })
     }
 
     /*
@@ -432,15 +494,14 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check or create patient record in data/users.json
-    const users = await readUsers()
-    let patientAccount = users.find(
-      (acc) => acc.user.email.trim().toLowerCase() === requesterEmail,
-    )
+    // Check or create patient record in MongoDB users collection
+    const patientAccount = await usersCollection.findOne({
+      email: requesterEmail,
+    })
 
     let requesterId = body.requesterId
     if (patientAccount) {
-      requesterId = patientAccount.user.userId
+      requesterId = patientAccount.userId || requesterId || createPatientId()
     } else {
       requesterId = createPatientId()
       const newPatientUser: User = {
@@ -455,8 +516,12 @@ export async function POST(request: Request) {
         verified: false,
         createdAt: new Date().toISOString(),
       }
-      users.push({ user: newPatientUser })
-      await saveUsers(users)
+      const { _id, ...patientWithoutId } = newPatientUser
+      await usersCollection.insertOne({
+        ...patientWithoutId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
     }
 
     const id = createRequestId()
@@ -494,10 +559,12 @@ export async function POST(request: Request) {
       createdAt: Date.now(),
     }
 
-    emergencies.unshift(newEmergency)
-    await saveEmergencies(emergencies)
+    await emergenciesCollection.insertOne({
+      ...newEmergency,
+      createdAtDate: new Date(),
+    })
 
-    console.log("EMERGENCY CREATED:", id, bloodGroup, requesterName)
+    console.log("EMERGENCY CREATED IN MONGODB:", id, bloodGroup, requesterName)
 
     return NextResponse.json({
       success: true,
