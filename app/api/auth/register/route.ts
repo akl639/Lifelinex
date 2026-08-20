@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { promises as fs } from "fs"
 import path from "path"
-
 import { CAMPUS_LOCATIONS } from "@/lib/mock/data"
 import type { BloodGroup, DonorProfile, DonorType, User } from "@/lib/types"
+import { getDatabase } from "@/lib/mongodb"
 
 export const runtime = "nodejs"
 
@@ -160,14 +160,9 @@ export async function POST(request: Request) {
                     { status: 400 },
                 )
             }
-        } else {
-            return NextResponse.json(
-                { error: "Invalid donor type selected." },
-                { status: 400 },
-            )
         }
 
-        // Duplicate email check (case-insensitive)
+        // Duplicate email check in data/users.json
         const accounts = await readAccounts()
         const existingAccount = accounts.find(
             (account) => account.user.email.trim().toLowerCase() === email,
@@ -215,19 +210,60 @@ export async function POST(request: Request) {
             createdAt: new Date().toISOString(),
         }
 
+        // 1. Save to data/users.json
         accounts.push({
             user,
             password,
         })
-
         await saveAccounts(accounts)
+
+        // 2. Also sync to MongoDB if configured
+        try {
+            const db = await getDatabase()
+            const usersCollection = db.collection("users")
+            await usersCollection.updateOne(
+                { email: user.email },
+                {
+                    $set: {
+                        userId: user.userId,
+                        name: user.name,
+                        email: user.email,
+                        phone: user.phone,
+                        address: user.address,
+                        role: user.role,
+                        donorType: user.donorType,
+                        bloodGroup: user.bloodGroup,
+                        department: user.department,
+                        year: user.year,
+                        graduationYear: user.graduationYear,
+                        relativeName: user.relativeName,
+                        relationship: user.relationship,
+                        studentName: user.studentName,
+                        studentId: user.studentId,
+                        studentDepartment: user.studentDepartment,
+                        locationOptIn: user.locationOptIn,
+                        alertOptIn: user.alertOptIn,
+                        password,
+                        updatedAt: new Date(),
+                    },
+                    $setOnInsert: {
+                        createdAt: new Date(),
+                    },
+                },
+                { upsert: true },
+            )
+        } catch (mongoError) {
+            console.warn("MongoDB sync skipped or error:", mongoError)
+        }
 
         const token = `server.${user.userId}`
 
-        console.log("DONOR CREATED:", user.userId, user.email, "TYPE:", donorType)
+        console.log("DONOR CREATED IN DATA/USERS.JSON:", user.userId, user.email, "TYPE:", donorType)
 
         return NextResponse.json(
             {
+                success: true,
+                message: "LifelineX account created successfully.",
                 token,
                 user,
             },
@@ -236,7 +272,12 @@ export async function POST(request: Request) {
     } catch (error) {
         console.error("REGISTER ERROR:", error)
         return NextResponse.json(
-            { error: "Unable to create the LifelineX account." },
+            {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to create the LifelineX account.",
+            },
             { status: 500 },
         )
     }

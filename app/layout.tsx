@@ -1,4 +1,4 @@
-import { Analytics } from '@vercel/analytics/next'
+import { Analytics } from '@vercel/analytics/react'
 import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono, Manrope } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
@@ -18,7 +18,6 @@ export const metadata: Metadata = {
   title: 'LifelineX — Campus Emergency Blood Donor Network',
   description:
     'LifelineX connects campus blood requests with nearby verified donors in seconds, using progressive 500m to campus-wide matching and live emergency tracking.',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
@@ -34,7 +33,11 @@ export const metadata: Metadata = {
         type: 'image/svg+xml',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: [
+      {
+        url: '/apple-icon.png',
+      },
+    ],
   },
 }
 
