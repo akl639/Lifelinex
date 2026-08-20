@@ -1,75 +1,8 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import crypto from "crypto"
+import { getDatabase } from "@/lib/mongodb"
 
 export const runtime = "nodejs"
-
-type StoredAccount = {
-    user: {
-        email: string
-        [key: string]: unknown
-    }
-    password?: string
-}
-
-type PasswordReset = {
-    email: string
-    token: string
-    expiresAt: number
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const USERS_FILE = path.join(DATA_DIR, "users.json")
-const RESETS_FILE = path.join(
-    DATA_DIR,
-    "password-resets.json",
-)
-
-async function readAccounts(): Promise<StoredAccount[]> {
-    const text = await fs.readFile(
-        USERS_FILE,
-        "utf8",
-    )
-
-    return text.trim()
-        ? JSON.parse(text)
-        : []
-}
-
-async function saveAccounts(
-    accounts: StoredAccount[],
-) {
-    await fs.writeFile(
-        USERS_FILE,
-        JSON.stringify(accounts, null, 2),
-        "utf8",
-    )
-}
-
-async function readResets(): Promise<PasswordReset[]> {
-    try {
-        const text = await fs.readFile(
-            RESETS_FILE,
-            "utf8",
-        )
-
-        return text.trim()
-            ? JSON.parse(text)
-            : []
-    } catch {
-        return []
-    }
-}
-
-async function saveResets(
-    resets: PasswordReset[],
-) {
-    await fs.writeFile(
-        RESETS_FILE,
-        JSON.stringify(resets, null, 2),
-        "utf8",
-    )
-}
 
 export async function POST(request: Request) {
     try {
@@ -102,14 +35,14 @@ export async function POST(request: Request) {
             )
         }
 
-        const resets = await readResets()
+        const db = await getDatabase()
+        const passwordResetsCollection = db.collection("passwordResets")
+        const usersCollection = db.collection("users")
 
-        const resetIndex = resets.findIndex(
-            (reset) =>
-                reset.token === token,
-        )
+        // 1. Verify reset token in MongoDB
+        const resetRecord = await passwordResetsCollection.findOne({ token })
 
-        if (resetIndex === -1) {
+        if (!resetRecord) {
             return NextResponse.json(
                 {
                     error:
@@ -119,12 +52,11 @@ export async function POST(request: Request) {
             )
         }
 
-        const reset = resets[resetIndex]
+        // 2. Check token expiration
+        const expiresAtTime = new Date(resetRecord.expiresAt).getTime()
 
-        if (reset.expiresAt < Date.now()) {
-            resets.splice(resetIndex, 1)
-
-            await saveResets(resets)
+        if (expiresAtTime < Date.now()) {
+            await passwordResetsCollection.deleteOne({ token })
 
             return NextResponse.json(
                 {
@@ -135,17 +67,12 @@ export async function POST(request: Request) {
             )
         }
 
-        const accounts = await readAccounts()
+        // 3. Find user account in MongoDB
+        const user = await usersCollection.findOne({
+            email: resetRecord.email,
+        })
 
-        const accountIndex = accounts.findIndex(
-            (account) =>
-                account.user.email
-                    .trim()
-                    .toLowerCase() ===
-                reset.email,
-        )
-
-        if (accountIndex === -1) {
+        if (!user) {
             return NextResponse.json(
                 {
                     error:
@@ -155,22 +82,30 @@ export async function POST(request: Request) {
             )
         }
 
-        /*
-         * Your existing login system currently
-         * stores passwords directly in users.json,
-         * so we preserve that format here.
-         */
-        accounts[accountIndex].password =
-            newPassword
+        // 4. Hash new password with crypto salt
+        const salt = crypto.randomBytes(16).toString("hex")
+        const passwordHash = crypto.scryptSync(newPassword, salt, 64).toString("hex")
 
-        await saveAccounts(accounts)
+        // 5. Update user password in MongoDB
+        await usersCollection.updateOne(
+            { email: resetRecord.email },
+            {
+                $set: {
+                    password: newPassword,
+                    passwordHash,
+                    passwordSalt: salt,
+                    updatedAt: new Date(),
+                },
+            },
+        )
 
-        /*
-         * Make the token single-use.
-         */
-        resets.splice(resetIndex, 1)
+        // 6. Make the token single-use by deleting it
+        await passwordResetsCollection.deleteMany({ email: resetRecord.email })
 
-        await saveResets(resets)
+        console.log(
+            "PASSWORD RESET SUCCESSFUL IN MONGODB FOR:",
+            resetRecord.email,
+        )
 
         return NextResponse.json({
             success: true,
@@ -186,7 +121,9 @@ export async function POST(request: Request) {
         return NextResponse.json(
             {
                 error:
-                    "Unable to reset password.",
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to reset password.",
             },
             { status: 500 },
         )

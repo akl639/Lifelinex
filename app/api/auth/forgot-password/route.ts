@@ -1,68 +1,9 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
 import crypto from "crypto"
 import nodemailer from "nodemailer"
+import { getDatabase } from "@/lib/mongodb"
 
 export const runtime = "nodejs"
-
-type StoredAccount = {
-    user: {
-        userId: string
-        name: string
-        email: string
-        [key: string]: unknown
-    }
-    password?: string
-}
-
-type PasswordReset = {
-    email: string
-    token: string
-    expiresAt: number
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const USERS_FILE = path.join(DATA_DIR, "users.json")
-const RESETS_FILE = path.join(DATA_DIR, "password-resets.json")
-
-async function readAccounts(): Promise<StoredAccount[]> {
-    try {
-        const text = await fs.readFile(USERS_FILE, "utf8")
-
-        if (!text.trim()) {
-            return []
-        }
-
-        return JSON.parse(text)
-    } catch {
-        return []
-    }
-}
-
-async function readResets(): Promise<PasswordReset[]> {
-    try {
-        const text = await fs.readFile(RESETS_FILE, "utf8")
-
-        if (!text.trim()) {
-            return []
-        }
-
-        return JSON.parse(text)
-    } catch {
-        return []
-    }
-}
-
-async function saveResets(resets: PasswordReset[]) {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-
-    await fs.writeFile(
-        RESETS_FILE,
-        JSON.stringify(resets, null, 2),
-        "utf8",
-    )
-}
 
 export async function POST(request: Request) {
     try {
@@ -81,15 +22,15 @@ export async function POST(request: Request) {
             )
         }
 
-        const accounts = await readAccounts()
+        const db = await getDatabase()
+        const usersCollection = db.collection("users")
+        const passwordResetsCollection = db.collection("passwordResets")
 
-        const account = accounts.find(
-            (item) =>
-                item.user.email.trim().toLowerCase() === email,
-        )
+        // Find user by email in MongoDB
+        const account = await usersCollection.findOne({ email })
 
         /*
-         * Do not reveal whether an account exists.
+         * Do not reveal whether an account exists for security.
          */
         if (!account) {
             return NextResponse.json({
@@ -113,7 +54,7 @@ export async function POST(request: Request) {
             return NextResponse.json(
                 {
                     error:
-                        "Email service is not configured. Check your .env.local file.",
+                        "Email service is not configured. Check your SMTP environment variables.",
                 },
                 { status: 500 },
             )
@@ -127,27 +68,19 @@ export async function POST(request: Request) {
         /*
          * Token expires after 15 minutes.
          */
-        const expiresAt = Date.now() + 15 * 60 * 1000
-
-        const resets = await readResets()
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
 
         /*
-         * Remove old/expired reset requests
-         * for this email.
+         * Store token in MongoDB passwordResets collection.
+         * Remove previous reset tokens for this email first.
          */
-        const filteredResets = resets.filter(
-            (reset) =>
-                reset.email !== email &&
-                reset.expiresAt > Date.now(),
-        )
-
-        filteredResets.push({
+        await passwordResetsCollection.deleteMany({ email })
+        await passwordResetsCollection.insertOne({
             email,
             token,
             expiresAt,
+            createdAt: new Date(),
         })
-
-        await saveResets(filteredResets)
 
         const appUrl =
             process.env.NEXT_PUBLIC_APP_URL ||
@@ -178,12 +111,14 @@ export async function POST(request: Request) {
          */
         await transporter.verify()
 
+        const recipientName = String(account.name || "LifelineX User")
+
         await transporter.sendMail({
             from: `"LifelineX" <${process.env.SMTP_FROM}>`,
             to: email,
             subject: "LifelineX Password Reset",
 
-            text: `Hello ${account.user.name},
+            text: `Hello ${recipientName},
 
 We received a request to reset your LifelineX password.
 
@@ -218,7 +153,7 @@ Campus Blood Net`,
           </h1>
 
           <p>
-            Hello ${account.user.name},
+            Hello ${recipientName},
           </p>
 
           <p>
@@ -266,7 +201,7 @@ Campus Blood Net`,
         })
 
         console.log(
-            "PASSWORD RESET EMAIL SENT:",
+            "PASSWORD RESET EMAIL SENT VIA MONGODB + BREVO:",
             email,
         )
 
