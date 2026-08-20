@@ -1,44 +1,16 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
-import { CAMPUS_LOCATIONS } from "@/lib/mock/data"
-import type { BloodGroup, DonorProfile, DonorType, User } from "@/lib/types"
+import { randomBytes, scryptSync } from "crypto"
 import { getDatabase } from "@/lib/mongodb"
+import { CAMPUS_LOCATIONS } from "@/lib/mock/data"
+import type { BloodGroup, DonorProfile, DonorType } from "@/lib/types"
 
 export const runtime = "nodejs"
-
-type StoredAccount = {
-    user: DonorProfile | User
-    password?: string
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const USERS_FILE = path.join(DATA_DIR, "users.json")
 
 function generateUserId() {
     const digits = Math.floor(1000 + Math.random() * 9000)
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
     const letter = letters[Math.floor(Math.random() * letters.length)]
     return `LFX-${digits}-${letter}`
-}
-
-async function readAccounts(): Promise<StoredAccount[]> {
-    try {
-        const text = await fs.readFile(USERS_FILE, "utf8")
-        if (!text.trim()) {
-            return []
-        }
-        return JSON.parse(text)
-    } catch {
-        await fs.mkdir(DATA_DIR, { recursive: true })
-        await fs.writeFile(USERS_FILE, "[]", "utf8")
-        return []
-    }
-}
-
-async function saveAccounts(accounts: StoredAccount[]) {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    await fs.writeFile(USERS_FILE, JSON.stringify(accounts, null, 2), "utf8")
 }
 
 export async function POST(request: Request) {
@@ -162,20 +134,23 @@ export async function POST(request: Request) {
             }
         }
 
-        // Duplicate email check in data/users.json
-        const accounts = await readAccounts()
-        const existingAccount = accounts.find(
-            (account) => account.user.email.trim().toLowerCase() === email,
-        )
+        // Connect to MongoDB Atlas
+        const db = await getDatabase()
+        const usersCollection = db.collection("users")
 
-        if (existingAccount) {
+        // Duplicate email check in MongoDB Atlas
+        const existingUser = await usersCollection.findOne({ email })
+        if (existingUser) {
             return NextResponse.json(
                 { error: "This Gmail is already registered with LifelineX." },
                 { status: 409 },
             )
         }
 
+        // Generate Unique ID & Password Hash
         const userId = generateUserId()
+        const salt = randomBytes(16).toString("hex")
+        const passwordHash = scryptSync(password, salt, 64).toString("hex")
 
         // Build donor user object
         const user: DonorProfile = {
@@ -210,55 +185,20 @@ export async function POST(request: Request) {
             createdAt: new Date().toISOString(),
         }
 
-        // 1. Save to data/users.json
-        accounts.push({
-            user,
+        // Save directly to MongoDB Atlas
+        const { _id, ...userWithoutId } = user
+        await usersCollection.insertOne({
+            ...userWithoutId,
             password,
+            passwordHash,
+            passwordSalt: salt,
+            createdAt: new Date(),
+            updatedAt: new Date(),
         })
-        await saveAccounts(accounts)
-
-        // 2. Also sync to MongoDB if configured
-        try {
-            const db = await getDatabase()
-            const usersCollection = db.collection("users")
-            await usersCollection.updateOne(
-                { email: user.email },
-                {
-                    $set: {
-                        userId: user.userId,
-                        name: user.name,
-                        email: user.email,
-                        phone: user.phone,
-                        address: user.address,
-                        role: user.role,
-                        donorType: user.donorType,
-                        bloodGroup: user.bloodGroup,
-                        department: user.department,
-                        year: user.year,
-                        graduationYear: user.graduationYear,
-                        relativeName: user.relativeName,
-                        relationship: user.relationship,
-                        studentName: user.studentName,
-                        studentId: user.studentId,
-                        studentDepartment: user.studentDepartment,
-                        locationOptIn: user.locationOptIn,
-                        alertOptIn: user.alertOptIn,
-                        password,
-                        updatedAt: new Date(),
-                    },
-                    $setOnInsert: {
-                        createdAt: new Date(),
-                    },
-                },
-                { upsert: true },
-            )
-        } catch (mongoError) {
-            console.warn("MongoDB sync skipped or error:", mongoError)
-        }
 
         const token = `server.${user.userId}`
 
-        console.log("DONOR CREATED IN DATA/USERS.JSON:", user.userId, user.email, "TYPE:", donorType)
+        console.log("DONOR REGISTERED IN MONGODB ATLAS:", user.userId, user.email, "TYPE:", donorType)
 
         return NextResponse.json(
             {

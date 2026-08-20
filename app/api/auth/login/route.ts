@@ -1,31 +1,9 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { scryptSync, timingSafeEqual } from "crypto"
 import { CURRENT_DONOR, CURRENT_COORDINATOR, DONORS } from "@/lib/mock/data"
-import type { DonorProfile, User } from "@/lib/types"
 import { getDatabase } from "@/lib/mongodb"
 
 export const runtime = "nodejs"
-
-type StoredAccount = {
-  user: DonorProfile | User
-  password?: string
-}
-
-const DATA_DIR = path.join(process.cwd(), "data")
-const USERS_FILE = path.join(DATA_DIR, "users.json")
-
-async function readAccounts(): Promise<StoredAccount[]> {
-  try {
-    const text = await fs.readFile(USERS_FILE, "utf8")
-    if (!text.trim()) {
-      return []
-    }
-    return JSON.parse(text)
-  } catch {
-    return []
-  }
-}
 
 export async function POST(request: Request) {
   try {
@@ -44,78 +22,55 @@ export async function POST(request: Request) {
       )
     }
 
-    // 1. Check registered accounts in data/users.json
-    const accounts = await readAccounts()
-    const registeredAccount = accounts.find(
-      (account) =>
-        account?.user?.email?.trim().toLowerCase() === email,
-    )
-
-    if (registeredAccount) {
-      if (registeredAccount.password && registeredAccount.password !== password) {
-        return NextResponse.json(
-          {
-            error:
-              "Wrong password. Please try again or use Forgot Password.",
-          },
-          { status: 401 },
-        )
-      }
-
-      const token = `server.${registeredAccount.user.userId}`
-
-      return NextResponse.json({
-        success: true,
-        token,
-        user: registeredAccount.user,
-      })
-    }
-
-    // 2. Check MongoDB as fallback (if account was registered in MongoDB)
+    // 1. Check MongoDB Atlas
     try {
       const db = await getDatabase()
       const usersCollection = db.collection("users")
-      const mongoAccount = await usersCollection.findOne({ email })
+      const account = await usersCollection.findOne({ email })
 
-      if (mongoAccount) {
-        if (mongoAccount.password && mongoAccount.password !== password) {
+      if (account) {
+        let passwordMatches = false
+
+        if (account.password && account.password === password) {
+          passwordMatches = true
+        } else if (account.passwordHash && account.passwordSalt) {
+          const storedHash = Buffer.from(String(account.passwordHash), "hex")
+          const calculatedHash = scryptSync(password, String(account.passwordSalt), 64)
+          passwordMatches =
+            storedHash.length === calculatedHash.length &&
+            timingSafeEqual(storedHash, calculatedHash)
+        }
+
+        if (!passwordMatches) {
           return NextResponse.json(
             { error: "Wrong password. Please try again or use Forgot Password." },
             { status: 401 },
           )
         }
 
-        const safeUser: any = {
-          _id: String(mongoAccount.userId ?? `server-${Date.now()}`),
-          userId: String(mongoAccount.userId),
-          name: String(mongoAccount.name ?? ""),
-          email: String(mongoAccount.email ?? ""),
-          phone: String(mongoAccount.phone ?? ""),
-          address: String(mongoAccount.address ?? ""),
-          bloodGroup: String(mongoAccount.bloodGroup ?? ""),
-          role: String(mongoAccount.role ?? "donor"),
-          donorType: String(mongoAccount.donorType ?? "student"),
-          department: String(mongoAccount.department ?? ""),
-          year: String(mongoAccount.year ?? ""),
-          graduationYear: String(mongoAccount.graduationYear ?? ""),
-          relativeName: String(mongoAccount.relativeName ?? ""),
-          relationship: String(mongoAccount.relationship ?? ""),
-          studentName: String(mongoAccount.studentName ?? ""),
-          studentId: String(mongoAccount.studentId ?? ""),
-          studentDepartment: String(mongoAccount.studentDepartment ?? ""),
-          locationOptIn: Boolean(mongoAccount.locationOptIn),
-          alertOptIn: Boolean(mongoAccount.alertOptIn),
-          verified: false,
-          createdAt: new Date().toISOString(),
+        const safeUser = {
+          _id: String(account.userId ?? account._id ?? `server-${Date.now()}`),
+          userId: String(account.userId),
+          name: String(account.name ?? ""),
+          email: String(account.email ?? ""),
+          phone: String(account.phone ?? ""),
+          address: String(account.address ?? ""),
+          bloodGroup: String(account.bloodGroup ?? ""),
+          role: String(account.role ?? "donor"),
+          donorType: String(account.donorType ?? "student"),
+          department: String(account.department ?? ""),
+          year: String(account.year ?? ""),
+          graduationYear: String(account.graduationYear ?? ""),
+          relativeName: String(account.relativeName ?? ""),
+          relationship: String(account.relationship ?? ""),
+          studentName: String(account.studentName ?? ""),
+          studentId: String(account.studentId ?? ""),
+          studentDepartment: String(account.studentDepartment ?? ""),
+          locationOptIn: Boolean(account.locationOptIn),
+          alertOptIn: Boolean(account.alertOptIn),
+          verified: Boolean(account.verified),
+          createdAt: typeof account.createdAt === "string" ? account.createdAt : new Date().toISOString(),
         }
-
-        // Cache into data/users.json for subsequent requests
-        accounts.push({
-          user: safeUser,
-          password: String(mongoAccount.password || password),
-        })
-        await fs.mkdir(DATA_DIR, { recursive: true })
-        await fs.writeFile(USERS_FILE, JSON.stringify(accounts, null, 2), "utf8")
 
         return NextResponse.json({
           success: true,
@@ -123,11 +78,11 @@ export async function POST(request: Request) {
           user: safeUser,
         })
       }
-    } catch {
-      // MongoDB check optional fallback
+    } catch (mongoErr) {
+      console.warn("MongoDB login check error:", mongoErr)
     }
 
-    // 3. Check demo mock users (Aarav, Dr. Nisha Rao, etc.)
+    // 2. Check demo mock users (Aarav, Dr. Nisha Rao, etc.)
     const demoUsers = [CURRENT_DONOR, CURRENT_COORDINATOR, ...DONORS]
     const demoMatch = demoUsers.find(
       (u) => u.email.trim().toLowerCase() === email,
@@ -142,11 +97,10 @@ export async function POST(request: Request) {
       })
     }
 
-    // 4. Email not found
+    // 3. Email not found
     return NextResponse.json(
       {
-        error:
-          "No LifelineX account is registered with this Gmail.",
+        error: "No LifelineX account is registered with this Gmail.",
       },
       { status: 404 },
     )
