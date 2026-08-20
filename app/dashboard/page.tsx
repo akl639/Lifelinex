@@ -87,6 +87,9 @@ export default function DashboardPage() {
   const [locationError, setLocationError] =
     useState("")
 
+  const [dismissedIds, setDismissedIds] =
+    useState<string[]>([])
+
   const [chatMessages, setChatMessages] =
     useState<ChatMessage[]>([])
   const [chatText, setChatText] = useState("")
@@ -101,7 +104,18 @@ export default function DashboardPage() {
         const currentUser =
           await authService.me()
 
-        setUser(currentUser as User)
+        if (!currentUser) {
+          router.push("/login")
+        } else {
+          setUser(currentUser as User)
+          setLoading(false)
+          try {
+            const saved = sessionStorage.getItem("lifelinex_dismissed_emergencies")
+            if (saved) {
+              setDismissedIds(JSON.parse(saved))
+            }
+          } catch {}
+        }
       } catch {
         router.replace("/login")
       } finally {
@@ -127,7 +141,7 @@ export default function DashboardPage() {
 
       try {
         const response = await fetch(
-          "/api/emergency",
+          `/api/emergency?viewerId=${encodeURIComponent(user.userId)}&t=${Date.now()}`,
           {
             cache: "no-store",
           },
@@ -142,13 +156,14 @@ export default function DashboardPage() {
 
         /*
          * Show active emergencies matching
-         * this donor's blood group.
+         * this donor's blood group and not dismissed by this donor.
          */
         const matching = all.filter(
           (item) =>
             item.status === "active" &&
-            item.bloodGroup ===
-              user.bloodGroup,
+            item.bloodGroup === user.bloodGroup &&
+            !dismissedIds.includes(item.id) &&
+            item.connectionStatus !== "ended",
         )
 
         setEmergencies(matching)
@@ -190,7 +205,7 @@ export default function DashboardPage() {
 
     const interval = setInterval(
       loadEmergencies,
-      2000,
+      1500,
     )
 
     return () =>
@@ -556,6 +571,20 @@ export default function DashboardPage() {
     } catch (error) {
       alert(error instanceof Error ? error.message : "Unable to disconnect.")
     }
+  }
+
+  /*
+   * DISMISS EMERGENCY (DONOR NOT INTERESTED)
+   * Dismisses only for this donor; does NOT cancel the emergency.
+   */
+  function dismissEmergency(emergencyId: string) {
+    setDismissedIds((prev) => {
+      const next = [...prev, emergencyId]
+      try {
+        sessionStorage.setItem("lifelinex_dismissed_emergencies", JSON.stringify(next))
+      } catch {}
+      return next
+    })
   }
 
   /*
@@ -1136,17 +1165,31 @@ export default function DashboardPage() {
 
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            acceptEmergency(
-                              emergency,
-                            )
-                          }
-                          className="rounded-lg bg-primary px-6 py-3 font-bold text-primary-foreground hover:opacity-90"
-                        >
-                          I CAN HELP
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              acceptEmergency(
+                                emergency,
+                              )
+                            }
+                            className="rounded-lg bg-primary px-6 py-3 font-bold text-primary-foreground hover:opacity-90"
+                          >
+                            I CAN HELP
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              dismissEmergency(
+                                emergency.id,
+                              )
+                            }
+                            className="rounded-lg border border-border bg-background px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            I'm Not Interested
+                          </button>
+                        </div>
 
                       </div>
 

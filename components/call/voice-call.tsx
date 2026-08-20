@@ -17,21 +17,26 @@ type Signal = {
   senderId: string
   senderRole: Role
   type:
-  | "call-request"
-  | "call-accept"
-  | "call-decline"
-  | "offer"
-  | "answer"
-  | "ice-candidate"
-  | "hangup"
+    | "call-request"
+    | "call-accept"
+    | "call-decline"
+    | "offer"
+    | "answer"
+    | "ice-candidate"
+    | "hangup"
   data?: any
   createdAt: number
 }
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
   ],
+  iceCandidatePoolSize: 10,
 }
 
 export function VoiceCall({
@@ -60,139 +65,171 @@ export function VoiceCall({
   const [error, setError] = useState("")
 
   // Send signaling messages via MongoDB API
-  const sendSignal = useCallback(async (type: Signal["type"], data?: any) => {
-    if (!emergencyId) return
-    try {
-      await fetch("/api/call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          emergencyId,
-          senderId: userId,
-          senderRole: role,
-          type,
-          data,
-        }),
-      })
-    } catch (err) {
-      console.warn("Signal send error:", err)
-    }
-  }, [emergencyId, userId, role])
+  const sendSignal = useCallback(
+    async (type: Signal["type"], data?: any) => {
+      if (!emergencyId) return
+      try {
+        await fetch("/api/call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            emergencyId,
+            senderId: userId,
+            senderRole: role,
+            type,
+            data,
+          }),
+        })
+      } catch (err) {
+        console.warn("Signal send error:", err)
+      }
+    },
+    [emergencyId, userId, role],
+  )
 
   // Clean up WebRTC peer connection, media tracks, and reset state
-  const cleanup = useCallback((notifyPeer = false) => {
-    if (notifyPeer && !isEndingRef.current) {
-      isEndingRef.current = true
-      sendSignal("hangup").catch(() => { })
-    }
+  const cleanup = useCallback(
+    (notifyPeer = false) => {
+      if (notifyPeer && !isEndingRef.current) {
+        isEndingRef.current = true
+        sendSignal("hangup").catch(() => {})
+      }
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          try {
+            track.stop()
+          } catch {}
+        })
+        localStreamRef.current = null
+      }
+
+      if (remoteStreamRef.current) {
+        remoteStreamRef.current.getTracks().forEach((track) => {
+          try {
+            track.stop()
+          } catch {}
+        })
+        remoteStreamRef.current = null
+      }
+
+      if (audioRef.current) {
+        audioRef.current.srcObject = null
+      }
+
+      if (peerRef.current) {
         try {
-          track.stop()
-        } catch { }
-      })
-      localStreamRef.current = null
-    }
+          peerRef.current.close()
+        } catch {}
+        peerRef.current = null
+      }
 
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((track) => {
-        try {
-          track.stop()
-        } catch { }
-      })
-      remoteStreamRef.current = null
-    }
+      candidateQueueRef.current = []
+      isInitiatorRef.current = false
+      isEndingRef.current = false
 
-    if (audioRef.current) {
-      audioRef.current.srcObject = null
-    }
-
-    if (peerRef.current) {
-      try {
-        peerRef.current.close()
-      } catch { }
-      peerRef.current = null
-    }
-
-    candidateQueueRef.current = []
-    isInitiatorRef.current = false
-    isEndingRef.current = false
-
-    setCallRequested(false)
-    setIncomingRequest(false)
-    setCalling(false)
-    setInCall(false)
-    setMuted(false)
-    setSpeakerMuted(false)
-    setCallDuration(0)
-  }, [sendSignal])
+      setCallRequested(false)
+      setIncomingRequest(false)
+      setCalling(false)
+      setInCall(false)
+      setMuted(false)
+      setSpeakerMuted(false)
+      setCallDuration(0)
+    },
+    [sendSignal],
+  )
 
   // Create RTCPeerConnection with local microphone stream
   const createPeer = useCallback(async () => {
-    // If peer already exists, close it
     if (peerRef.current) {
       try {
         peerRef.current.close()
-      } catch { }
+      } catch {}
       peerRef.current = null
     }
 
-    // Get microphone permission and stream
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      })
-    } catch (err) {
-      throw new Error(
-        "Microphone access was denied or not found. Please allow microphone access to talk.",
-      )
+    let stream = localStreamRef.current
+    if (!stream || stream.getAudioTracks().length === 0 || !stream.active) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        })
+        localStreamRef.current = stream
+      } catch (err) {
+        throw new Error(
+          "Microphone permission denied or unavailable. Please allow microphone access to talk.",
+        )
+      }
     }
-
-    localStreamRef.current = stream
 
     const peer = new RTCPeerConnection(ICE_SERVERS)
 
-    // Add local tracks to peer
-    stream.getTracks().forEach((track) => {
-      peer.addTrack(track, stream)
+    // Add local audio tracks to peer connection
+    stream.getAudioTracks().forEach((track) => {
+      peer.addTrack(track, stream!)
     })
 
     // Handle ICE candidates
     peer.onicecandidate = (event) => {
       if (event.candidate) {
-        sendSignal("ice-candidate", event.candidate.toJSON()).catch(() => { })
+        sendSignal("ice-candidate", event.candidate.toJSON()).catch(() => {})
       }
     }
 
-    // Handle remote audio stream
+    // Handle incoming remote audio stream
     peer.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        remoteStreamRef.current = event.streams[0]
-        if (audioRef.current) {
-          audioRef.current.srcObject = event.streams[0]
-          audioRef.current.play().catch((playErr) => {
-            console.warn("Audio autoplay blocked by browser:", playErr)
+      console.log("WebRTC remote audio stream received:", event)
+      let remoteStream = event.streams && event.streams[0]
+      if (!remoteStream) {
+        remoteStream = new MediaStream([event.track])
+      }
+      remoteStreamRef.current = remoteStream
+      if (audioRef.current) {
+        audioRef.current.srcObject = remoteStream
+        audioRef.current.muted = false
+        audioRef.current.volume = 1.0
+        const playPromise = audioRef.current.play()
+        if (playPromise !== undefined) {
+          playPromise.catch((playErr) => {
+            console.warn("Audio autoplay blocked:", playErr)
           })
         }
       }
     }
 
-    peer.oniceconnectionstatechange = () => {
-      const state = peer.iceConnectionState
-      if (state === "connected" || state === "completed") {
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") {
         setCalling(false)
         setInCall(true)
         setStatusMessage("Call Connected - Audio Live")
-      } else if (state === "disconnected" || state === "failed" || state === "closed") {
+      } else if (
+        peer.connectionState === "failed" ||
+        peer.connectionState === "closed"
+      ) {
         cleanup(false)
-        setStatusMessage("Call Ended")
+        setStatusMessage("Call ended")
+      }
+    }
+
+    peer.oniceconnectionstatechange = () => {
+      if (
+        peer.iceConnectionState === "connected" ||
+        peer.iceConnectionState === "completed"
+      ) {
+        setCalling(false)
+        setInCall(true)
+        setStatusMessage("Call Connected - Audio Live")
+      } else if (
+        peer.iceConnectionState === "failed" ||
+        peer.iceConnectionState === "closed"
+      ) {
+        cleanup(false)
+        setStatusMessage("Call ended")
       }
     }
 
@@ -200,17 +237,24 @@ export function VoiceCall({
     return peer
   }, [sendSignal, cleanup])
 
-  // 1. Initiator clicks "Request Voice Call"
+  // 1. Caller clicks "Request Voice Call"
   const requestCall = async () => {
     try {
       setError("")
       setStatusMessage("Calling... Waiting for answer")
       setCallRequested(true)
       isInitiatorRef.current = true
+
+      // Acquire microphone inside the user interaction event
+      await createPeer()
+
       await sendSignal("call-request")
     } catch (err) {
       setCallRequested(false)
-      setError("Unable to request voice call.")
+      isInitiatorRef.current = false
+      setError(
+        err instanceof Error ? err.message : "Unable to request voice call.",
+      )
     }
   }
 
@@ -222,7 +266,10 @@ export function VoiceCall({
       setCalling(true)
       setStatusMessage("Connecting audio...")
 
-      // Receiver notifies initiator that call was accepted
+      // Acquire microphone inside the user interaction event
+      await createPeer()
+
+      // Notify caller that call was accepted
       await sendSignal("call-accept")
     } catch (err) {
       setIncomingRequest(false)
@@ -237,25 +284,30 @@ export function VoiceCall({
     setStatusMessage("Call declined")
     try {
       await sendSignal("call-decline")
-    } catch { }
+    } catch {}
   }
 
-  // Initiator creates WebRTC Offer after call-accept
+  // Caller creates WebRTC Offer after call-accept
   const createAndSendOffer = async () => {
     try {
       setCalling(true)
-      setStatusMessage("Establishing connection...")
-      const peer = await createPeer()
+      setStatusMessage("Establishing voice connection...")
+      let peer = peerRef.current
+      if (!peer) {
+        peer = await createPeer()
+      }
 
       const offer = await peer.createOffer({
         offerToReceiveAudio: true,
       })
 
       await peer.setLocalDescription(offer)
-      await sendSignal("offer", offer)
+      await sendSignal("offer", { type: offer.type, sdp: offer.sdp })
     } catch (err) {
       cleanup(true)
-      setError(err instanceof Error ? err.message : "Failed to start audio call.")
+      setError(
+        err instanceof Error ? err.message : "Failed to start audio call.",
+      )
     }
   }
 
@@ -263,8 +315,11 @@ export function VoiceCall({
   const handleOffer = async (offerData: RTCSessionDescriptionInit) => {
     try {
       setCalling(true)
-      setStatusMessage("Connecting...")
-      const peer = await createPeer()
+      setStatusMessage("Connecting audio...")
+      let peer = peerRef.current
+      if (!peer) {
+        peer = await createPeer()
+      }
 
       await peer.setRemoteDescription(new RTCSessionDescription(offerData))
 
@@ -274,20 +329,22 @@ export function VoiceCall({
         if (candidate) {
           try {
             await peer.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch { }
+          } catch {}
         }
       }
 
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
-      await sendSignal("answer", answer)
+      await sendSignal("answer", { type: answer.type, sdp: answer.sdp })
     } catch (err) {
       cleanup(true)
-      setError(err instanceof Error ? err.message : "Failed to establish voice call.")
+      setError(
+        err instanceof Error ? err.message : "Failed to establish voice call.",
+      )
     }
   }
 
-  // Initiator receives Answer from Receiver
+  // Caller receives Answer from Receiver
   const handleAnswer = async (answerData: RTCSessionDescriptionInit) => {
     const peer = peerRef.current
     if (!peer) return
@@ -301,7 +358,7 @@ export function VoiceCall({
         if (candidate) {
           try {
             await peer.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch { }
+          } catch {}
         }
       }
 
@@ -330,7 +387,8 @@ export function VoiceCall({
 
   // Process incoming signaling messages
   const handleSignal = async (signal: Signal) => {
-    if (signal.senderId === userId) return
+    // Ignore signals sent by ourselves
+    if (signal.senderRole === role || signal.senderId === userId) return
 
     if (signal.type === "call-request") {
       setIncomingRequest(true)
@@ -372,7 +430,7 @@ export function VoiceCall({
 
     if (signal.type === "hangup") {
       cleanup(false)
-      setStatusMessage("The other person ended the call.")
+      setStatusMessage("The call was ended.")
     }
   }
 
@@ -390,7 +448,7 @@ export function VoiceCall({
 
       try {
         const response = await fetch(
-          `/api/call?emergencyId=${encodeURIComponent(emergencyId)}&after=${lastSignalRef.current}`,
+          `/api/call?emergencyId=${encodeURIComponent(emergencyId)}&after=${lastSignalRef.current}&t=${Date.now()}`,
           { cache: "no-store" },
         )
 
@@ -401,10 +459,13 @@ export function VoiceCall({
 
         for (const signal of received) {
           if (!isMounted) break
-          lastSignalRef.current = Math.max(lastSignalRef.current, signal.createdAt)
+          lastSignalRef.current = Math.max(
+            lastSignalRef.current,
+            signal.createdAt,
+          )
           await handleSignal(signal)
         }
-      } catch { }
+      } catch {}
     }
 
     const timer = setInterval(pollSignals, 1000)
@@ -414,7 +475,7 @@ export function VoiceCall({
       clearInterval(timer)
       cleanup(false)
     }
-  }, [connected, emergencyId, userId])
+  }, [connected, emergencyId, userId, role])
 
   // Call duration timer
   useEffect(() => {
@@ -469,8 +530,21 @@ export function VoiceCall({
 
   return (
     <div className="mt-5 rounded-2xl border-2 border-border bg-card p-5 shadow-sm">
-      {/* Hidden audio element with autoplay to play remote peer audio */}
-      <audio ref={audioRef} autoPlay playsInline />
+      {/* Audio element off-screen for clean remote stream playback */}
+      <audio
+        ref={audioRef}
+        autoPlay
+        playsInline
+        className="sr-only"
+        style={{
+          position: "fixed",
+          top: -9999,
+          left: -9999,
+          width: 1,
+          height: 1,
+          opacity: 0,
+        }}
+      />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -502,7 +576,9 @@ export function VoiceCall({
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-bold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99]"
         >
           <span>📞</span>
-          <span>Start Voice Call with {role === "donor" ? "Patient" : "Donor"}</span>
+          <span>
+            Start Voice Call with {role === "donor" ? "Patient" : "Donor"}
+          </span>
         </button>
       )}
 
@@ -512,7 +588,8 @@ export function VoiceCall({
           <div className="flex items-center gap-3">
             <span className="inline-block h-3 w-3 animate-ping rounded-full bg-primary" />
             <p className="font-semibold text-sm">
-              Calling {role === "donor" ? "Patient" : "Donor"}... Waiting for answer
+              Calling {role === "donor" ? "Patient" : "Donor"}... Waiting for
+              answer
             </p>
           </div>
 
@@ -561,7 +638,11 @@ export function VoiceCall({
         <div className="mt-4 rounded-xl border border-green-500/40 bg-green-500/10 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${inCall ? "bg-green-500 animate-pulse" : "bg-amber-500"}`} />
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full ${
+                  inCall ? "animate-pulse bg-green-500" : "bg-amber-500"
+                }`}
+              />
               <p className="font-semibold text-sm text-foreground">
                 {calling ? "Connecting voice stream..." : "Voice Call Active"}
               </p>
@@ -579,10 +660,11 @@ export function VoiceCall({
             <button
               type="button"
               onClick={toggleMute}
-              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${muted
+              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${
+                muted
                   ? "border-red-500 bg-red-500/15 text-red-600 dark:text-red-400"
                   : "border-border bg-background hover:bg-muted"
-                }`}
+              }`}
             >
               <span className="text-base">{muted ? "🔇" : "🎤"}</span>
               <span className="mt-1">{muted ? "Unmute Mic" : "Mute Mic"}</span>
@@ -591,13 +673,16 @@ export function VoiceCall({
             <button
               type="button"
               onClick={toggleSpeaker}
-              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${speakerMuted
+              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${
+                speakerMuted
                   ? "border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400"
                   : "border-border bg-background hover:bg-muted"
-                }`}
+              }`}
             >
               <span className="text-base">{speakerMuted ? "🔈" : "🔊"}</span>
-              <span className="mt-1">{speakerMuted ? "Speaker Off" : "Speaker On"}</span>
+              <span className="mt-1">
+                {speakerMuted ? "Speaker Off" : "Speaker On"}
+              </span>
             </button>
 
             <button
@@ -612,11 +697,13 @@ export function VoiceCall({
         </div>
       )}
 
-      {statusMessage && !inCall && !calling && !callRequested && !incomingRequest && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {statusMessage}
-        </p>
-      )}
+      {statusMessage &&
+        !inCall &&
+        !calling &&
+        !callRequested &&
+        !incomingRequest && (
+          <p className="mt-2 text-xs text-muted-foreground">{statusMessage}</p>
+        )}
 
       {error && (
         <div className="mt-3 rounded-lg bg-red-500/10 p-2.5 text-xs font-medium text-red-600 dark:text-red-400">

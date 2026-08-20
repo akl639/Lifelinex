@@ -288,7 +288,7 @@ export default function NewEmergencyPage() {
     async function checkEmergency() {
       try {
         const response = await fetch(
-          "/api/emergency",
+          `/api/emergency?emergencyId=${encodeURIComponent(requestId!)}&t=${Date.now()}`,
           {
             cache: "no-store",
           },
@@ -298,13 +298,15 @@ export default function NewEmergencyPage() {
           return
         }
 
-        const data =
-          await response.json()
+        const data = await response.json()
 
         const emergency =
+          data.emergency ||
           data.emergencies?.find(
-            (item: Emergency) =>
-              item.id === requestId,
+            (item: any) =>
+              item.id === requestId ||
+              item.emergencyId === requestId ||
+              item.requestId === requestId,
           )
 
         if (!emergency) {
@@ -313,12 +315,16 @@ export default function NewEmergencyPage() {
 
         setEmergencyData(emergency)
 
-        /* Connection ended: return to donor search. */
-        if (emergency.connectionStatus === "ended") {
+        /* Connection ended or donor disconnected: return to donor search */
+        if (
+          emergency.connectionStatus === "ended" ||
+          !emergency.acceptedBy ||
+          emergency.status !== "fulfilled"
+        ) {
           setDonorFound(false)
           setContactRequested(false)
           setStatus(
-            "The previous donor connection ended. Searching for another donor...",
+            "Searching for donors in your campus vicinity...",
           )
         } else if (
           emergency.status === "fulfilled" &&
@@ -347,7 +353,7 @@ export default function NewEmergencyPage() {
 
     const interval = setInterval(
       checkEmergency,
-      2000,
+      1500,
     )
 
     return () =>
@@ -676,6 +682,50 @@ export default function NewEmergencyPage() {
       setStatus("You disconnected from the donor. Searching for another donor...")
     } catch (error) {
       alert(error instanceof Error ? error.message : "Unable to disconnect from donor.")
+    }
+  }
+
+  /*
+   * CANCEL EMERGENCY REQUEST (PATIENT CANCELS)
+   */
+  async function cancelEmergencyRequest() {
+    if (!requestId) return
+
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this emergency request? This will stop search alerts and end any active donor connections.",
+    )
+    if (!confirmed) return
+
+    try {
+      const response = await fetch("/api/emergency", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cancel",
+          emergencyId: requestId,
+          requesterId: "REQUESTER",
+          userId: "REQUESTER",
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to cancel emergency request.")
+      }
+      setCreated(false)
+      setRequestId("")
+      setDonorFound(false)
+      setEmergencyData(null)
+      setChatMessages([])
+      setChatText("")
+      setRadius("500 m")
+      setStatus("Emergency request cancelled.")
+      alert("Your emergency request has been cancelled.")
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to cancel emergency request.",
+      )
     }
   }
 
@@ -1055,6 +1105,17 @@ export default function NewEmergencyPage() {
               {location}
             </p>
 
+          </div>
+
+          {/* CANCEL EMERGENCY REQUEST */}
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={cancelEmergencyRequest}
+              className="w-full rounded-xl border-2 border-red-500/40 bg-red-500/10 px-6 py-4 font-bold text-red-600 transition hover:bg-red-500/20 active:scale-[0.99] dark:text-red-400"
+            >
+              ❌ Cancel Emergency Request
+            </button>
           </div>
 
         </div>

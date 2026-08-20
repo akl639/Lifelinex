@@ -3,6 +3,8 @@ import { getDatabase } from "@/lib/mongodb"
 import type { BloodGroup, User } from "@/lib/types"
 
 export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export type Emergency = {
   id: string
@@ -116,9 +118,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ emergency: found })
     }
 
-    // List of emergencies with privacy protection for unconnected donors
+    // List of emergencies with privacy protection for unconnected donors (excluding cancelled)
     const emergencyDocs = await emergenciesCollection
-      .find({})
+      .find({ status: { $ne: "cancelled" } })
       .sort({ createdAt: -1 })
       .toArray()
 
@@ -180,10 +182,49 @@ export async function POST(request: Request) {
         )
       }
 
+      if (emergency.status === "cancelled") {
+        return NextResponse.json(
+          { error: "This emergency request has been cancelled by the patient." },
+          { status: 410 },
+        )
+      }
+
+      const donorId = String(body.donorId || body.userId || "DONOR").trim()
+
+      // Prevent duplicate acceptance by different donor
+      if (
+        emergency.status === "fulfilled" &&
+        emergency.acceptedBy &&
+        emergency.acceptedBy !== donorId &&
+        emergency.connectionStatus === "connected"
+      ) {
+        return NextResponse.json(
+          { error: "This emergency has already been accepted by another donor." },
+          { status: 409 },
+        )
+      }
+
+      // Check if donor already has an active connection with another emergency
+      const existingActive = await emergenciesCollection.findOne({
+        acceptedBy: donorId,
+        connectionStatus: "connected",
+        id: { $ne: emergency.id },
+      })
+
+      if (existingActive) {
+        return NextResponse.json(
+          {
+            error:
+              "You already have an active emergency response in progress. Please finish or disconnect from it first.",
+          },
+          { status: 409 },
+        )
+      }
+
       const updates: Record<string, any> = {
         status: "fulfilled",
-        acceptedBy: body.donorId || body.userId || "DONOR",
-        donorId: body.donorId || body.userId || "DONOR",
+        acceptedBy: donorId,
+        donorId: donorId,
         donorName: body.donorName || "LifelineX Donor",
         donorPhone: body.donorPhone || "",
         donorEmail: body.donorEmail || "",
@@ -210,6 +251,63 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         emergency: updatedEmergency,
+      })
+    }
+
+    /*
+     * CANCEL EMERGENCY REQUEST (PATIENT CANCELS)
+     */
+    if (body.action === "cancel") {
+      const emergency = await emergenciesCollection.findOne({
+        $or: [
+          { id: body.emergencyId },
+          { emergencyId: body.emergencyId },
+          { requestId: body.emergencyId },
+        ],
+      })
+
+      if (!emergency) {
+        return NextResponse.json(
+          { error: "Emergency request not found." },
+          { status: 404 },
+        )
+      }
+
+      const updates = {
+        status: "cancelled" as const,
+        connectionStatus: "ended" as const,
+        connectionEndedBy: body.userId || "REQUESTER",
+        connectionEndedAt: Date.now(),
+        contactRequested: false,
+        contactAccepted: false,
+        acceptedBy: null,
+        donorId: null,
+        donorName: null,
+        donorPhone: null,
+        donorEmail: null,
+        updatedAt: new Date(),
+      }
+
+      await emergenciesCollection.updateOne(
+        { _id: emergency._id },
+        { $set: updates },
+      )
+
+      try {
+        const callSignals = db.collection("callSignals")
+        await callSignals.deleteMany({
+          $or: [
+            { emergencyId: String(body.emergencyId) },
+            { emergencyId: String(emergency.id || "") },
+          ],
+        })
+      } catch { }
+
+      const { _id, ...rest } = emergency
+      return NextResponse.json({
+        success: true,
+        message: "Emergency request cancelled.",
+        emergency: { ...rest, ...updates },
       })
     }
 
