@@ -344,12 +344,31 @@ export async function POST(request: Request) {
         connectionStatus: "ended" as const,
         connectionEndedBy: body.userId || "USER",
         connectionEndedAt: Date.now(),
+        contactRequested: false,
+        contactAccepted: false,
+        acceptedBy: null,
+        donorId: null,
+        donorName: null,
+        donorPhone: null,
+        donorEmail: null,
+        status: "active" as const,
       }
 
       await emergenciesCollection.updateOne(
         { _id: emergency._id },
         { $set: updates },
       )
+
+      // Clean up call signals so any active WebRTC voice call immediately terminates
+      try {
+        const callSignals = db.collection("callSignals")
+        await callSignals.deleteMany({
+          $or: [
+            { emergencyId: String(body.emergencyId) },
+            { emergencyId: String(emergency.id || "") },
+          ],
+        })
+      } catch { }
 
       const { _id, ...rest } = emergency
       return NextResponse.json({

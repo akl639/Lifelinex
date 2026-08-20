@@ -160,8 +160,8 @@ export default function DashboardPage() {
         const mine = all.find(
           (item) =>
             item.status === "fulfilled" &&
-            item.acceptedBy ===
-              user.userId,
+            item.acceptedBy === user.userId &&
+            item.connectionStatus === "connected",
         )
 
         if (mine) {
@@ -176,7 +176,7 @@ export default function DashboardPage() {
             setContactAccepted(false)
           }
         } else {
-          /* Connection was ended. */
+          /* Connection was ended or disconnected. */
           setAcceptedEmergency(null)
           setContactRequest(null)
           setContactAccepted(false)

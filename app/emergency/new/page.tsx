@@ -321,22 +321,22 @@ export default function NewEmergencyPage() {
             "The previous donor connection ended. Searching for another donor...",
           )
         } else if (
-          emergency.status ===
-          "fulfilled" &&
-          emergency.acceptedBy
+          emergency.status === "fulfilled" &&
+          emergency.acceptedBy &&
+          emergency.connectionStatus === "connected"
         ) {
           setDonorFound(true)
           setStatus(
             "A donor has accepted your emergency request.",
           )
-        }
 
-        /*
-         * Contact request was successfully
-         * stored on the server.
-         */
-        if (emergency.contactRequested) {
-          setContactRequested(true)
+          /*
+           * Contact request was successfully
+           * stored on the server.
+           */
+          if (emergency.contactRequested) {
+            setContactRequested(true)
+          }
         }
       } catch {
         // Continue polling.
