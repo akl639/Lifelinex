@@ -19,3 +19,13 @@ export async function getPasswordResetsCollection() {
     const db = await getDatabase()
     return db.collection("passwordResets")
 }
+
+export async function getCallsCollection() {
+    const db = await getDatabase()
+    return db.collection("calls")
+}
+
+export async function getCallSignalsCollection() {
+    const db = await getDatabase()
+    return db.collection("callSignals")
+}

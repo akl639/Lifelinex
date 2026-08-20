@@ -800,323 +800,333 @@ export default function NewEmergencyPage() {
     }
   }
 
+
   if (created) {
     const distance =
       getDistanceInKm()
 
     return (
-      <main className="min-h-screen bg-background px-6 py-12">
-        <div className="mx-auto max-w-4xl">
+      <main className="min-h-screen bg-background px-4 sm:px-6 py-6 sm:py-10">
+        <div className="mx-auto max-w-6xl">
 
-          <h1 className="text-4xl font-bold">
-            Emergency Request
-          </h1>
+          {/* HEADER */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">
+                Emergency Request
+              </h1>
 
-          <p className="mt-3 text-muted-foreground">
-            Request ID:{" "}
-            <span className="font-mono font-semibold">
-              {requestId}
-            </span>
-          </p>
-
-          {donorFound ? (
-            <div className="mt-8 rounded-xl border border-green-500/40 bg-green-500/10 p-6">
-
-              {/* DONOR FOUND */}
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">
-                  🤝
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+                Request ID:{" "}
+                <span className="font-mono font-bold text-foreground">
+                  {requestId}
                 </span>
-
-                <div>
-                  <h2 className="text-2xl font-bold text-green-600">
-                    Donor Found
-                  </h2>
-
-                  <p className="mt-1 text-muted-foreground">
-                    A compatible donor has accepted
-                    your emergency request.
-                  </p>
-                </div>
-              </div>
-
-              {/* DONOR DETAILS */}
-              <div className="mt-6 rounded-xl border border-green-500/30 bg-background p-6">
-                <h3 className="text-xl font-bold">
-                  🤝 Connected With Donor
-                </h3>
-
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Name
-                    </p>
-                    <p className="mt-1 font-semibold">
-                      {emergencyData?.donorName ||
-                        "LifelineX Donor"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      LifelineX ID
-                    </p>
-                    <p className="mt-1 font-mono font-semibold">
-                      {emergencyData?.acceptedBy ||
-                        "Unavailable"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Protected Contact
-                    </p>
-                    <p className="mt-1 font-mono font-semibold text-primary">
-                      {emergencyData?.donorContactId ||
-                        "Protected"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Privacy
-                    </p>
-                    <p className="mt-1 font-semibold text-green-600">
-                      🔐 Phone & email protected
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-sm text-muted-foreground">
-                  💬 Text chat is automatic. No contact request is needed
-                  for messaging. 📞 Voice calls use a separate request
-                  and acceptance step.
-                </p>
-              </div>
-
-              {/* DONOR LOCATION */}
-              <div className="mt-5 rounded-xl border border-primary/30 bg-background p-6">
-                <h3 className="text-xl font-bold">
-                  📍 Donor Location
-                </h3>
-
-                {emergencyData?.donorLatitude !== undefined &&
-                  emergencyData?.donorLongitude !== undefined ? (
-                  <>
-                    <p className="mt-3 text-muted-foreground">
-                      The donor's latest shared location:
-                    </p>
-
-                    <p className="mt-2 font-mono text-sm">
-                      {emergencyData.donorLatitude.toFixed(5)},{" "}
-                      {emergencyData.donorLongitude.toFixed(5)}
-                    </p>
-
-                    {distance !== null && (
-                      <p className="mt-3 text-lg font-bold text-primary">
-                        📏{" "}
-                        {distance < 1
-                          ? `${Math.round(
-                            distance * 1000,
-                          )} m away`
-                          : `${distance.toFixed(
-                            2,
-                          )} km away`}
-                      </p>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={openMapsRoute}
-                      className="mt-5 w-full rounded-lg bg-primary px-6 py-3 font-semibold text-primary-foreground hover:opacity-90"
-                    >
-                      🗺️ Track / Navigate to Donor in Google Maps
-                    </button>
-
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Donor location updates while the donor keeps Live
-                      Location enabled.
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-3 text-muted-foreground">
-                    Waiting for the donor's live location...
-                  </p>
-                )}
-              </div>
-
-              {/* AUTOMATIC PRIVATE CHAT */}
-              <div className="mt-5 rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
-                <h4 className="font-bold">
-                  💬 Private LifelineX Chat
-                </h4>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Chat opens automatically after the donor taps I CAN HELP.
-                  No contact request is required for text.
-                </p>
-
-                <div className="mt-4 overflow-hidden rounded-xl border border-border bg-background">
-                  <div className="max-h-80 min-h-40 space-y-3 overflow-y-auto p-4">
-                    {chatMessages.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted-foreground">
-                        No messages yet. Start the conversation.
-                      </p>
-                    ) : (
-                      chatMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.senderRole === "requester"
-                            ? "justify-end"
-                            : "justify-start"
-                            }`}
-                        >
-                          <div
-                            className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.senderRole === "requester"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
-                              }`}
-                          >
-                            <p className="text-xs font-semibold opacity-70">
-                              {message.senderRole === "requester"
-                                ? "You"
-                                : "Donor"}
-                            </p>
-                            <p className="mt-1 whitespace-pre-wrap break-words">
-                              {message.text}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      sendChatMessage()
-                    }}
-                    className="flex gap-2 border-t border-border p-3"
-                  >
-                    <input
-                      value={chatText}
-                      onChange={(event) =>
-                        setChatText(event.target.value)
-                      }
-                      placeholder="Type a message..."
-                      maxLength={500}
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary"
-                      disabled={chatSending}
-                    />
-
-                    <button
-                      type="submit"
-                      disabled={!chatText.trim() || chatSending}
-                      className="rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {chatSending ? "..." : "Send"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-
-              {/* VOICE CALL - SEPARATE REQUEST/ACCEPT FLOW */}
-              {emergencyData?.connectionStatus === "connected" && (
-                <VoiceCall
-                  emergencyId={emergencyData.id}
-                  userId="REQUESTER"
-                  role="requester"
-                  connected={true}
-                />
-              )}
-
-              <button
-                type="button"
-                onClick={disconnectFromDonor}
-                className="mt-5 w-full rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700"
-              >
-                🔴 Disconnect from Donor
-              </button>
-
+              </p>
             </div>
 
+            {donorFound && emergencyData?.connectionStatus === "connected" && (
+              <span className="self-start sm:self-auto rounded-full bg-green-500/20 px-3 py-1 text-xs font-bold text-green-700 dark:text-green-300">
+                ● Connected to Donor
+              </span>
+            )}
+          </div>
 
+          {donorFound && emergencyData?.connectionStatus === "connected" ? (
+            <div className="mt-6 sm:mt-8">
+              {/* Responsive Grid: 2 Columns on Desktop (7/5 split), Stacked on Mobile */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+                
+                {/* Left Column: Donor Details, Live Location & Request Info */}
+                <div className="space-y-6 lg:col-span-7">
+                  {/* DONOR FOUND STATUS */}
+                  <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-5 sm:p-6 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl sm:text-3xl">
+                        🤝
+                      </span>
+
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-bold text-green-700 dark:text-green-300">
+                          Donor Found & Connected
+                        </h2>
+
+                        <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground">
+                          A compatible donor has accepted your emergency request.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2.5 sm:gap-3 grid-cols-2">
+                      <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground">
+                          Donor Name
+                        </p>
+                        <p className="mt-0.5 font-semibold text-xs sm:text-sm">
+                          {emergencyData?.donorName || "LifelineX Donor"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground">
+                          LifelineX ID
+                        </p>
+                        <p className="mt-0.5 font-mono font-semibold text-xs sm:text-sm">
+                          {emergencyData?.acceptedBy || "Unavailable"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground">
+                          Protected Contact
+                        </p>
+                        <p className="mt-0.5 font-mono font-semibold text-xs sm:text-sm text-primary">
+                          {emergencyData?.donorContactId || "Protected"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground">
+                          Privacy
+                        </p>
+                        <p className="mt-0.5 font-semibold text-xs sm:text-sm text-green-600">
+                          🔐 Protected
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* DONOR LOCATION */}
+                  <div className="rounded-xl border border-primary/30 bg-card p-5 sm:p-6 shadow-sm">
+                    <h3 className="text-lg sm:text-xl font-bold">
+                      📍 Donor Live Location
+                    </h3>
+
+                    {emergencyData?.donorLatitude !== undefined &&
+                    emergencyData?.donorLongitude !== undefined ? (
+                      <>
+                        <p className="mt-2 font-mono text-xs sm:text-sm text-muted-foreground">
+                          {emergencyData.donorLatitude.toFixed(5)},{" "}
+                          {emergencyData.donorLongitude.toFixed(5)}
+                        </p>
+
+                        {distance !== null && (
+                          <p className="mt-2 text-base sm:text-lg font-bold text-primary">
+                            📏{" "}
+                            {distance < 1
+                              ? `${Math.round(distance * 1000)} m away`
+                              : `${distance.toFixed(2)} km away`}
+                          </p>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={openMapsRoute}
+                          className="mt-4 block w-full rounded-xl bg-primary px-5 py-3 text-center text-xs sm:text-sm font-bold text-primary-foreground shadow transition hover:opacity-90 active:scale-[0.99]"
+                        >
+                          🗺️ Track / Navigate to Donor in Google Maps
+                        </button>
+
+                        <p className="mt-2 text-[11px] sm:text-xs text-muted-foreground">
+                          Donor location updates in real-time while active.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs sm:text-sm text-muted-foreground">
+                        Waiting for the donor's live location...
+                      </p>
+                    )}
+                  </div>
+
+                  {/* REQUEST DETAILS SUMMARY */}
+                  <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                    <div className="rounded-xl border border-border bg-card p-3 sm:p-4 text-center shadow-sm">
+                      <p className="text-[11px] sm:text-xs text-muted-foreground">Blood Needed</p>
+                      <p className="mt-0.5 text-base sm:text-lg font-bold text-primary">{bloodGroup}</p>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-card p-3 sm:p-4 text-center shadow-sm">
+                      <p className="text-[11px] sm:text-xs text-muted-foreground">Quantity</p>
+                      <p className="mt-0.5 text-base sm:text-lg font-bold">{quantity} unit(s)</p>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-card p-3 sm:p-4 text-center shadow-sm">
+                      <p className="text-[11px] sm:text-xs text-muted-foreground">Urgency</p>
+                      <p className="mt-0.5 text-base sm:text-lg font-bold">{urgency}</p>
+                    </div>
+                  </div>
+
+                  {/* DISCONNECT FROM DONOR */}
+                  <button
+                    type="button"
+                    onClick={disconnectFromDonor}
+                    className="w-full rounded-xl bg-red-600 px-5 py-3.5 text-xs sm:text-sm font-bold text-white shadow transition hover:bg-red-700 active:scale-[0.99]"
+                  >
+                    🔴 Disconnect from Donor
+                  </button>
+                </div>
+
+                {/* Right Column: Voice Call & Live Chat (Sticky on Desktop) */}
+                <div className="space-y-6 lg:col-span-5 lg:sticky lg:top-6">
+                  {/* VOICE CALL */}
+                  <VoiceCall
+                    emergencyId={emergencyData.id}
+                    userId="REQUESTER"
+                    role="requester"
+                    connected={true}
+                  />
+
+                  {/* PRIVATE CHAT */}
+                  <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 sm:p-5 shadow-sm">
+                    <h4 className="text-lg sm:text-xl font-bold">
+                      💬 Private LifelineX Chat
+                    </h4>
+
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Direct chat with your assigned donor.
+                    </p>
+
+                    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-background">
+                      <div className="max-h-72 min-h-36 space-y-3 overflow-y-auto p-3 sm:p-4">
+                        {chatMessages.length === 0 ? (
+                          <p className="py-8 text-center text-xs sm:text-sm text-muted-foreground">
+                            No messages yet. Start the conversation.
+                          </p>
+                        ) : (
+                          chatMessages.map((message) => (
+                            <div
+                              key={message.id}
+                              className={`flex ${
+                                message.senderRole === "requester"
+                                  ? "justify-end"
+                                  : "justify-start"
+                              }`}
+                            >
+                              <div
+                                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm ${
+                                  message.senderRole === "requester"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-muted"
+                                }`}
+                              >
+                                <p className="text-[10px] font-semibold opacity-70">
+                                  {message.senderRole === "requester"
+                                    ? "You"
+                                    : "Donor"}
+                                </p>
+                                <p className="mt-0.5 whitespace-pre-wrap break-words">
+                                  {message.text}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          sendChatMessage()
+                        }}
+                        className="flex gap-2 border-t border-border p-2.5 sm:p-3"
+                      >
+                        <input
+                          value={chatText}
+                          onChange={(event) =>
+                            setChatText(event.target.value)
+                          }
+                          placeholder="Type a message..."
+                          maxLength={500}
+                          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-primary"
+                          disabled={chatSending}
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={!chatText.trim() || chatSending}
+                          className="rounded-lg bg-primary px-3.5 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {chatSending ? "..." : "Send"}
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
           ) : (
-            <div className="mt-8 rounded-xl border border-primary/30 bg-primary/5 p-6">
+            <div className="mt-6 sm:mt-8 space-y-6">
+              {/* SEARCHING STATUS CARD */}
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 sm:p-6 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <span className="inline-block h-3.5 w-3.5 animate-ping rounded-full bg-primary" />
+                  <h2 className="text-lg sm:text-xl font-bold">
+                    Request Active
+                  </h2>
+                </div>
 
-              <h2 className="text-xl font-bold">
-                Request Active
-              </h2>
+                <p className="mt-2 text-xs sm:text-sm text-muted-foreground">
+                  {status}
+                </p>
 
-              <p className="mt-2 text-muted-foreground">
-                {status}
-              </p>
+                <p className="mt-3 text-3xl sm:text-4xl font-extrabold text-primary">
+                  {radius}
+                </p>
+              </div>
 
-              <p className="mt-4 text-4xl font-extrabold text-primary">
-                {radius}
-              </p>
+              {/* REQUEST DETAILS */}
+              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
+                <div className="rounded-xl border border-border p-4 sm:p-5 bg-card shadow-sm">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Blood Group
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-primary">
+                    {bloodGroup}
+                  </p>
+                </div>
 
+                <div className="rounded-xl border border-border p-4 sm:p-5 bg-card shadow-sm">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Quantity
+                  </p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {quantity} unit(s)
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border p-4 sm:p-5 bg-card shadow-sm">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Urgency
+                  </p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {urgency}
+                  </p>
+                </div>
+              </div>
+
+              {/* EMERGENCY LOCATION */}
+              <div className="rounded-xl border border-border p-5 sm:p-6 bg-card shadow-sm">
+                <h2 className="text-lg sm:text-xl font-semibold">
+                  📍 Emergency Location
+                </h2>
+
+                <p className="mt-2 text-xs sm:text-sm text-muted-foreground">
+                  {location}
+                </p>
+              </div>
+
+              {/* CANCEL EMERGENCY REQUEST */}
+              <div>
+                <button
+                  type="button"
+                  onClick={cancelEmergencyRequest}
+                  className="w-full rounded-xl border-2 border-red-500/40 bg-red-500/10 px-5 py-3.5 sm:py-4 text-xs sm:text-sm font-bold text-red-600 transition hover:bg-red-500/20 active:scale-[0.99] dark:text-red-400"
+                >
+                  ❌ Cancel Emergency Request
+                </button>
+              </div>
             </div>
           )}
-
-          {/* REQUEST DETAILS */}
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-
-            <div className="rounded-xl border border-border p-5">
-              <p className="text-sm text-muted-foreground">
-                Blood Group
-              </p>
-
-              <p className="mt-1 text-2xl font-bold">
-                {bloodGroup}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border p-5">
-              <p className="text-sm text-muted-foreground">
-                Quantity
-              </p>
-
-              <p className="mt-1 text-2xl font-bold">
-                {quantity} unit(s)
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border p-5">
-              <p className="text-sm text-muted-foreground">
-                Urgency
-              </p>
-
-              <p className="mt-1 text-2xl font-bold">
-                {urgency}
-              </p>
-            </div>
-
-          </div>
-
-          {/* REQUESTER LOCATION */}
-          <div className="mt-6 rounded-xl border border-border p-6">
-
-            <h2 className="text-xl font-semibold">
-              📍 Emergency Location
-            </h2>
-
-            <p className="mt-2 text-sm text-muted-foreground">
-              {location}
-            </p>
-
-          </div>
-
-          {/* CANCEL EMERGENCY REQUEST */}
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={cancelEmergencyRequest}
-              className="w-full rounded-xl border-2 border-red-500/40 bg-red-500/10 px-6 py-4 font-bold text-red-600 transition hover:bg-red-500/20 active:scale-[0.99] dark:text-red-400"
-            >
-              ❌ Cancel Emergency Request
-            </button>
-          </div>
 
         </div>
       </main>

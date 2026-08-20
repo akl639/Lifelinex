@@ -203,3 +203,21 @@ export interface ApiResult<T> {
   data: T
   message?: string
 }
+
+export interface CallRecord {
+  _id?: string
+  callId: string
+  emergencyId: string
+  patientId: string
+  donorId: string
+  startedAt: number
+  startedAtDate?: Date
+  endedAt?: number
+  endedAtDate?: Date
+  duration?: number
+  endedBy?: string
+  status: 'active' | 'completed' | 'failed'
+  createdAt?: Date
+  updatedAt?: Date
+}
+

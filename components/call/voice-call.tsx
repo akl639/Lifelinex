@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
+import type { CallSignalType } from "@/app/api/call/route"
 
 type Role = "requester" | "donor"
 
@@ -13,17 +14,11 @@ type Props = {
 
 type Signal = {
   id: string
+  callId?: string
   emergencyId: string
   senderId: string
   senderRole: Role
-  type:
-    | "call-request"
-    | "call-accept"
-    | "call-decline"
-    | "offer"
-    | "answer"
-    | "ice-candidate"
-    | "hangup"
+  type: CallSignalType
   data?: any
   createdAt: number
 }
@@ -49,9 +44,13 @@ export function VoiceCall({
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const lastSignalRef = useRef(0)
+
+  const activeCallIdRef = useRef<string | null>(null)
   const isInitiatorRef = useRef(false)
   const candidateQueueRef = useRef<RTCIceCandidateInit[]>([])
+  const processedSignalIdsRef = useRef<Set<string>>(new Set())
+  const endedCallIdsRef = useRef<Set<string>>(new Set())
+  const lastSignalRef = useRef(0)
   const isEndingRef = useRef(false)
 
   const [callRequested, setCallRequested] = useState(false)
@@ -66,35 +65,51 @@ export function VoiceCall({
 
   // Send signaling messages via MongoDB API
   const sendSignal = useCallback(
-    async (type: Signal["type"], data?: any) => {
-      if (!emergencyId) return
+    async (type: CallSignalType, data?: any, explicitCallId?: string) => {
+      if (!emergencyId) return null
+      const callIdToSend = explicitCallId || activeCallIdRef.current || ""
       try {
-        await fetch("/api/call", {
+        const res = await fetch("/api/call", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             emergencyId,
             senderId: userId,
             senderRole: role,
+            callId: callIdToSend,
             type,
             data,
           }),
         })
+        if (res.ok) {
+          const result = await res.json()
+          if (result.callId && !activeCallIdRef.current) {
+            activeCallIdRef.current = result.callId
+          }
+          return result
+        }
       } catch (err) {
         console.warn("Signal send error:", err)
       }
+      return null
     },
     [emergencyId, userId, role],
   )
 
   // Clean up WebRTC peer connection, media tracks, and reset state
   const cleanup = useCallback(
-    (notifyPeer = false) => {
-      if (notifyPeer && !isEndingRef.current) {
-        isEndingRef.current = true
-        sendSignal("hangup").catch(() => {})
+    (notifyPeer = false, statusMsg = "Call ended") => {
+      const callIdToClose = activeCallIdRef.current
+      if (callIdToClose) {
+        endedCallIdsRef.current.add(callIdToClose)
       }
 
+      if (notifyPeer && !isEndingRef.current) {
+        isEndingRef.current = true
+        sendSignal("hangup", null, callIdToClose || undefined).catch(() => {})
+      }
+
+      // Stop all microphone tracks cleanly
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
           try {
@@ -119,12 +134,17 @@ export function VoiceCall({
 
       if (peerRef.current) {
         try {
+          peerRef.current.onconnectionstatechange = null
+          peerRef.current.oniceconnectionstatechange = null
+          peerRef.current.onicecandidate = null
+          peerRef.current.ontrack = null
           peerRef.current.close()
         } catch {}
         peerRef.current = null
       }
 
       candidateQueueRef.current = []
+      activeCallIdRef.current = null
       isInitiatorRef.current = false
       isEndingRef.current = false
 
@@ -135,14 +155,22 @@ export function VoiceCall({
       setMuted(false)
       setSpeakerMuted(false)
       setCallDuration(0)
+      if (statusMsg) {
+        setStatusMessage(statusMsg)
+      }
     },
     [sendSignal],
   )
 
   // Create RTCPeerConnection with local microphone stream
   const createPeer = useCallback(async () => {
+    // If an existing open connection is in place, clean it up before creating new
     if (peerRef.current) {
       try {
+        peerRef.current.onconnectionstatechange = null
+        peerRef.current.oniceconnectionstatechange = null
+        peerRef.current.onicecandidate = null
+        peerRef.current.ontrack = null
         peerRef.current.close()
       } catch {}
       peerRef.current = null
@@ -171,13 +199,18 @@ export function VoiceCall({
 
     // Add local audio tracks to peer connection
     stream.getAudioTracks().forEach((track) => {
+      track.enabled = true
       peer.addTrack(track, stream!)
     })
 
     // Handle ICE candidates
     peer.onicecandidate = (event) => {
       if (event.candidate) {
-        sendSignal("ice-candidate", event.candidate.toJSON()).catch(() => {})
+        sendSignal(
+          "ice-candidate",
+          event.candidate.toJSON(),
+          activeCallIdRef.current || undefined,
+        ).catch(() => {})
       }
     }
 
@@ -189,6 +222,7 @@ export function VoiceCall({
         remoteStream = new MediaStream([event.track])
       }
       remoteStreamRef.current = remoteStream
+
       if (audioRef.current) {
         audioRef.current.srcObject = remoteStream
         audioRef.current.muted = false
@@ -196,40 +230,35 @@ export function VoiceCall({
         const playPromise = audioRef.current.play()
         if (playPromise !== undefined) {
           playPromise.catch((playErr) => {
-            console.warn("Audio autoplay blocked:", playErr)
+            console.warn("Audio autoplay play caught:", playErr)
           })
         }
       }
     }
 
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "connected") {
+      const state = peer.connectionState
+      console.log("WebRTC connectionState:", state)
+      if (state === "connected") {
         setCalling(false)
         setInCall(true)
         setStatusMessage("Call Connected - Audio Live")
-      } else if (
-        peer.connectionState === "failed" ||
-        peer.connectionState === "closed"
-      ) {
-        cleanup(false)
-        setStatusMessage("Call ended")
+      } else if (state === "failed") {
+        console.warn("WebRTC connection failed.")
+        cleanup(true, "Call connection failed")
       }
     }
 
     peer.oniceconnectionstatechange = () => {
-      if (
-        peer.iceConnectionState === "connected" ||
-        peer.iceConnectionState === "completed"
-      ) {
+      const iceState = peer.iceConnectionState
+      console.log("WebRTC iceConnectionState:", iceState)
+      if (iceState === "connected" || iceState === "completed") {
         setCalling(false)
         setInCall(true)
         setStatusMessage("Call Connected - Audio Live")
-      } else if (
-        peer.iceConnectionState === "failed" ||
-        peer.iceConnectionState === "closed"
-      ) {
-        cleanup(false)
-        setStatusMessage("Call ended")
+      } else if (iceState === "failed") {
+        console.warn("WebRTC ICE connection failed.")
+        cleanup(true, "Call connection failed")
       }
     }
 
@@ -245,13 +274,18 @@ export function VoiceCall({
       setCallRequested(true)
       isInitiatorRef.current = true
 
+      const newCallId = `CALL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`
+      activeCallIdRef.current = newCallId
+      lastSignalRef.current = Date.now() - 2000
+
       // Acquire microphone inside the user interaction event
       await createPeer()
 
-      await sendSignal("call-request")
+      await sendSignal("call-request", null, newCallId)
     } catch (err) {
       setCallRequested(false)
       isInitiatorRef.current = false
+      activeCallIdRef.current = null
       setError(
         err instanceof Error ? err.message : "Unable to request voice call.",
       )
@@ -266,11 +300,16 @@ export function VoiceCall({
       setCalling(true)
       setStatusMessage("Connecting audio...")
 
+      const currentCallId = activeCallIdRef.current
+      if (!currentCallId) {
+        throw new Error("No active call session.")
+      }
+
       // Acquire microphone inside the user interaction event
       await createPeer()
 
       // Notify caller that call was accepted
-      await sendSignal("call-accept")
+      await sendSignal("call-accept", null, currentCallId)
     } catch (err) {
       setIncomingRequest(false)
       setCalling(false)
@@ -280,11 +319,13 @@ export function VoiceCall({
 
   // 3. Receiver clicks "Decline Call"
   const declineCallRequest = async () => {
+    const currentCallId = activeCallIdRef.current
     setIncomingRequest(false)
     setStatusMessage("Call declined")
     try {
-      await sendSignal("call-decline")
+      await sendSignal("call-decline", null, currentCallId || undefined)
     } catch {}
+    cleanup(false, "Call declined")
   }
 
   // Caller creates WebRTC Offer after call-accept
@@ -293,7 +334,7 @@ export function VoiceCall({
       setCalling(true)
       setStatusMessage("Establishing voice connection...")
       let peer = peerRef.current
-      if (!peer) {
+      if (!peer || peer.signalingState === "closed") {
         peer = await createPeer()
       }
 
@@ -302,9 +343,13 @@ export function VoiceCall({
       })
 
       await peer.setLocalDescription(offer)
-      await sendSignal("offer", { type: offer.type, sdp: offer.sdp })
+      await sendSignal(
+        "offer",
+        { type: offer.type, sdp: offer.sdp },
+        activeCallIdRef.current || undefined,
+      )
     } catch (err) {
-      cleanup(true)
+      cleanup(true, "Failed to start audio call")
       setError(
         err instanceof Error ? err.message : "Failed to start audio call.",
       )
@@ -317,11 +362,23 @@ export function VoiceCall({
       setCalling(true)
       setStatusMessage("Connecting audio...")
       let peer = peerRef.current
-      if (!peer) {
+      if (!peer || peer.signalingState === "closed") {
         peer = await createPeer()
       }
 
-      await peer.setRemoteDescription(new RTCSessionDescription(offerData))
+      // If peer is not in stable state, handle rollback
+      if (peer.signalingState !== "stable") {
+        try {
+          await Promise.all([
+            peer.setLocalDescription({ type: "rollback" }),
+            peer.setRemoteDescription(new RTCSessionDescription(offerData)),
+          ])
+        } catch {
+          await peer.setRemoteDescription(new RTCSessionDescription(offerData))
+        }
+      } else {
+        await peer.setRemoteDescription(new RTCSessionDescription(offerData))
+      }
 
       // Process any early queued ICE candidates
       while (candidateQueueRef.current.length > 0) {
@@ -329,15 +386,21 @@ export function VoiceCall({
         if (candidate) {
           try {
             await peer.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch {}
+          } catch (e) {
+            console.warn("Error adding queued ICE candidate:", e)
+          }
         }
       }
 
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
-      await sendSignal("answer", { type: answer.type, sdp: answer.sdp })
+      await sendSignal(
+        "answer",
+        { type: answer.type, sdp: answer.sdp },
+        activeCallIdRef.current || undefined,
+      )
     } catch (err) {
-      cleanup(true)
+      cleanup(true, "Failed to establish voice call")
       setError(
         err instanceof Error ? err.message : "Failed to establish voice call.",
       )
@@ -347,24 +410,28 @@ export function VoiceCall({
   // Caller receives Answer from Receiver
   const handleAnswer = async (answerData: RTCSessionDescriptionInit) => {
     const peer = peerRef.current
-    if (!peer) return
+    if (!peer || peer.signalingState === "closed") return
 
     try {
-      await peer.setRemoteDescription(new RTCSessionDescription(answerData))
+      if (peer.signalingState === "have-local-offer") {
+        await peer.setRemoteDescription(new RTCSessionDescription(answerData))
 
-      // Process any early queued ICE candidates
-      while (candidateQueueRef.current.length > 0) {
-        const candidate = candidateQueueRef.current.shift()
-        if (candidate) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(candidate))
-          } catch {}
+        // Process any early queued ICE candidates
+        while (candidateQueueRef.current.length > 0) {
+          const candidate = candidateQueueRef.current.shift()
+          if (candidate) {
+            try {
+              await peer.addIceCandidate(new RTCIceCandidate(candidate))
+            } catch (e) {
+              console.warn("Error adding queued ICE candidate:", e)
+            }
+          }
         }
-      }
 
-      setCalling(false)
-      setInCall(true)
-      setStatusMessage("Call Connected - Audio Live")
+        setCalling(false)
+        setInCall(true)
+        setStatusMessage("Call Connected - Audio Live")
+      }
     } catch (err) {
       console.warn("Error setting remote description from answer:", err)
     }
@@ -390,9 +457,33 @@ export function VoiceCall({
     // Ignore signals sent by ourselves
     if (signal.senderRole === role || signal.senderId === userId) return
 
+    // Avoid reprocessing same signal
+    if (signal.id && processedSignalIdsRef.current.has(signal.id)) return
+    if (signal.id) {
+      processedSignalIdsRef.current.add(signal.id)
+    }
+
+    // Ignore signals for calls that have already ended
+    if (signal.callId && endedCallIdsRef.current.has(signal.callId)) {
+      return
+    }
+
     if (signal.type === "call-request") {
+      if (inCall || calling) return
+      if (signal.callId) {
+        activeCallIdRef.current = signal.callId
+      }
       setIncomingRequest(true)
       setStatusMessage("Incoming voice call...")
+      return
+    }
+
+    // Check callId match for call-specific signals
+    if (
+      signal.callId &&
+      activeCallIdRef.current &&
+      signal.callId !== activeCallIdRef.current
+    ) {
       return
     }
 
@@ -405,15 +496,21 @@ export function VoiceCall({
     }
 
     if (signal.type === "call-decline") {
+      if (signal.callId) {
+        endedCallIdsRef.current.add(signal.callId)
+      }
       setCallRequested(false)
       setCalling(false)
       setIncomingRequest(false)
-      setStatusMessage("The other person declined the call.")
+      cleanup(false, "The other person declined the call.")
       return
     }
 
     if (signal.type === "offer") {
       setCallRequested(false)
+      if (signal.callId && !activeCallIdRef.current) {
+        activeCallIdRef.current = signal.callId
+      }
       await handleOffer(signal.data)
       return
     }
@@ -428,9 +525,11 @@ export function VoiceCall({
       return
     }
 
-    if (signal.type === "hangup") {
-      cleanup(false)
-      setStatusMessage("The call was ended.")
+    if (signal.type === "hangup" || signal.type === "call-failed") {
+      if (signal.callId) {
+        endedCallIdsRef.current.add(signal.callId)
+      }
+      cleanup(false, "The call was ended.")
     }
   }
 
@@ -447,8 +546,11 @@ export function VoiceCall({
       if (!isMounted || !connected) return
 
       try {
+        const callIdParam = activeCallIdRef.current
+          ? `&callId=${encodeURIComponent(activeCallIdRef.current)}`
+          : ""
         const response = await fetch(
-          `/api/call?emergencyId=${encodeURIComponent(emergencyId)}&after=${lastSignalRef.current}&t=${Date.now()}`,
+          `/api/call?emergencyId=${encodeURIComponent(emergencyId)}&after=${lastSignalRef.current}${callIdParam}&t=${Date.now()}`,
           { cache: "no-store" },
         )
 
@@ -473,7 +575,6 @@ export function VoiceCall({
     return () => {
       isMounted = false
       clearInterval(timer)
-      cleanup(false)
     }
   }, [connected, emergencyId, userId, role])
 
@@ -516,8 +617,7 @@ export function VoiceCall({
 
   // Controls: End Call
   const handleEndCall = () => {
-    setStatusMessage("Call ended")
-    cleanup(true)
+    cleanup(true, "Call ended")
   }
 
   function formatTime(seconds: number) {
@@ -529,7 +629,7 @@ export function VoiceCall({
   if (!connected) return null
 
   return (
-    <div className="mt-5 rounded-2xl border-2 border-border bg-card p-5 shadow-sm">
+    <div className="mt-4 sm:mt-5 rounded-2xl border-2 border-border bg-card p-4 sm:p-5 shadow-sm">
       {/* Audio element off-screen for clean remote stream playback */}
       <audio
         ref={audioRef}
@@ -546,25 +646,25 @@ export function VoiceCall({
         }}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-xl">📞</span>
-          <h3 className="font-bold text-base md:text-lg">
+          <span className="text-lg sm:text-xl">📞</span>
+          <h3 className="font-bold text-sm sm:text-base md:text-lg">
             Emergency Voice Call
           </h3>
         </div>
 
         {inCall && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-green-500" />
-            <span className="font-mono text-sm font-bold text-green-600 dark:text-green-400">
+            <span className="font-mono text-xs sm:text-sm font-bold text-green-600 dark:text-green-400">
               {formatTime(callDuration)}
             </span>
           </div>
         )}
       </div>
 
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 text-[11px] sm:text-xs text-muted-foreground">
         Live browser-to-browser voice call over encrypted WebRTC connection.
       </p>
 
@@ -573,7 +673,7 @@ export function VoiceCall({
         <button
           type="button"
           onClick={requestCall}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-bold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99]"
+          className="mt-3 sm:mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 sm:px-5 sm:py-3.5 text-xs sm:text-sm md:text-base font-bold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99]"
         >
           <span>📞</span>
           <span>
@@ -584,19 +684,18 @@ export function VoiceCall({
 
       {/* CALL REQUESTED (OUTGOING) */}
       {callRequested && !inCall && (
-        <div className="mt-4 rounded-xl border border-primary/30 bg-primary/10 p-4">
-          <div className="flex items-center gap-3">
-            <span className="inline-block h-3 w-3 animate-ping rounded-full bg-primary" />
-            <p className="font-semibold text-sm">
-              Calling {role === "donor" ? "Patient" : "Donor"}... Waiting for
-              answer
+        <div className="mt-3 sm:mt-4 rounded-xl border border-primary/30 bg-primary/10 p-3 sm:p-4">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <span className="inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 animate-ping rounded-full bg-primary" />
+            <p className="font-semibold text-xs sm:text-sm">
+              Calling {role === "donor" ? "Patient" : "Donor"}... Waiting for answer
             </p>
           </div>
 
           <button
             type="button"
             onClick={handleEndCall}
-            className="mt-3 w-full rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold hover:bg-muted"
+            className="mt-3 w-full rounded-lg border border-border bg-background px-4 py-2 text-xs sm:text-sm font-semibold hover:bg-muted"
           >
             Cancel Call
           </button>
@@ -605,19 +704,19 @@ export function VoiceCall({
 
       {/* INCOMING CALL DIALOG */}
       {incomingRequest && !inCall && (
-        <div className="mt-4 rounded-xl border-2 border-green-500/50 bg-green-500/10 p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="inline-block h-3 w-3 animate-bounce rounded-full bg-green-500" />
-            <p className="font-bold text-sm text-green-700 dark:text-green-300">
+        <div className="mt-3 sm:mt-4 rounded-xl border-2 border-green-500/50 bg-green-500/10 p-3 sm:p-4 shadow-sm">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <span className="inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 animate-bounce rounded-full bg-green-500" />
+            <p className="font-bold text-xs sm:text-sm text-green-700 dark:text-green-300">
               📞 Incoming Voice Call from {role === "donor" ? "Patient" : "Donor"}
             </p>
           </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex gap-2 sm:gap-3">
             <button
               type="button"
               onClick={acceptCallRequest}
-              className="flex-1 rounded-xl bg-green-600 px-4 py-2.5 font-bold text-white shadow transition hover:bg-green-700 active:scale-[0.98]"
+              className="flex-1 rounded-xl bg-green-600 px-3 py-2.5 sm:px-4 sm:py-3 font-bold text-white shadow transition hover:bg-green-700 active:scale-[0.98] text-xs sm:text-sm min-h-[44px]"
             >
               ✅ Accept
             </button>
@@ -625,7 +724,7 @@ export function VoiceCall({
             <button
               type="button"
               onClick={declineCallRequest}
-              className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 font-bold text-white shadow transition hover:bg-red-700 active:scale-[0.98]"
+              className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 sm:px-4 sm:py-3 font-bold text-white shadow transition hover:bg-red-700 active:scale-[0.98] text-xs sm:text-sm min-h-[44px]"
             >
               ❌ Decline
             </button>
@@ -635,52 +734,52 @@ export function VoiceCall({
 
       {/* ACTIVE CALL / CONNECTING STATE */}
       {(calling || inCall) && (
-        <div className="mt-4 rounded-xl border border-green-500/40 bg-green-500/10 p-4">
-          <div className="flex items-center justify-between">
+        <div className="mt-3 sm:mt-4 rounded-xl border border-green-500/40 bg-green-500/10 p-3 sm:p-4">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span
                 className={`inline-block h-2.5 w-2.5 rounded-full ${
                   inCall ? "animate-pulse bg-green-500" : "bg-amber-500"
                 }`}
               />
-              <p className="font-semibold text-sm text-foreground">
+              <p className="font-semibold text-xs sm:text-sm text-foreground">
                 {calling ? "Connecting voice stream..." : "Voice Call Active"}
               </p>
             </div>
 
             {inCall && (
-              <span className="rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs font-semibold text-green-700 dark:text-green-300">
+              <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-green-700 dark:text-green-300">
                 Live
               </span>
             )}
           </div>
 
-          {/* Call Action Controls */}
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          {/* Call Action Controls - Mobile-friendly & responsive grid */}
+          <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-1.5 sm:gap-2.5">
             <button
               type="button"
               onClick={toggleMute}
-              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${
+              className={`flex flex-col items-center justify-center rounded-xl border p-2 sm:p-2.5 text-[11px] sm:text-xs font-semibold transition min-h-[56px] sm:min-h-[64px] ${
                 muted
                   ? "border-red-500 bg-red-500/15 text-red-600 dark:text-red-400"
                   : "border-border bg-background hover:bg-muted"
               }`}
             >
-              <span className="text-base">{muted ? "🔇" : "🎤"}</span>
-              <span className="mt-1">{muted ? "Unmute Mic" : "Mute Mic"}</span>
+              <span className="text-base sm:text-lg">{muted ? "🔇" : "🎤"}</span>
+              <span className="mt-1 leading-tight">{muted ? "Unmute" : "Mute"}</span>
             </button>
 
             <button
               type="button"
               onClick={toggleSpeaker}
-              className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-xs font-semibold transition ${
+              className={`flex flex-col items-center justify-center rounded-xl border p-2 sm:p-2.5 text-[11px] sm:text-xs font-semibold transition min-h-[56px] sm:min-h-[64px] ${
                 speakerMuted
                   ? "border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400"
                   : "border-border bg-background hover:bg-muted"
               }`}
             >
-              <span className="text-base">{speakerMuted ? "🔈" : "🔊"}</span>
-              <span className="mt-1">
+              <span className="text-base sm:text-lg">{speakerMuted ? "🔈" : "🔊"}</span>
+              <span className="mt-1 leading-tight">
                 {speakerMuted ? "Speaker Off" : "Speaker On"}
               </span>
             </button>
@@ -688,10 +787,10 @@ export function VoiceCall({
             <button
               type="button"
               onClick={handleEndCall}
-              className="flex flex-col items-center justify-center rounded-xl bg-red-600 p-2.5 text-xs font-bold text-white shadow transition hover:bg-red-700 active:scale-[0.98]"
+              className="flex flex-col items-center justify-center rounded-xl bg-red-600 p-2 sm:p-2.5 text-[11px] sm:text-xs font-bold text-white shadow transition hover:bg-red-700 active:scale-[0.98] min-h-[56px] sm:min-h-[64px]"
             >
-              <span className="text-base">🔴</span>
-              <span className="mt-1">End Call</span>
+              <span className="text-base sm:text-lg">🔴</span>
+              <span className="mt-1 leading-tight">End Call</span>
             </button>
           </div>
         </div>
